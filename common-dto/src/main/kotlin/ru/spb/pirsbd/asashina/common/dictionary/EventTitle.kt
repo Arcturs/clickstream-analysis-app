@@ -1,4 +1,4 @@
-package ru.spb.itmo.pirsbd.asashina.generator.dictionary
+package ru.spb.pirsbd.asashina.common.dictionary
 
 enum class EventTitle {
 

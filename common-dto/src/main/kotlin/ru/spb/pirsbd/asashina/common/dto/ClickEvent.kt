@@ -1,4 +1,4 @@
-package ru.spb.itmo.pirsbd.asashina.generator.dto
+package ru.spb.pirsbd.asashina.common.dto
 
 import java.util.UUID
 
