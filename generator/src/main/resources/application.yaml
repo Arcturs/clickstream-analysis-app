@@ -1,0 +1,7 @@
+spring:
+  application.name: generator
+  kafka:
+    topic: app.messages
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVER:localhost:9092,localhost:9094}
+
+scheduler.batchSize: 500

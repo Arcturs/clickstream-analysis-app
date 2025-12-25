@@ -1,13 +1,4 @@
 services:
-  generator:
-    image: generator
-    container_name: generator
-    build:
-      context: generator/
-    ports:
-      - "8081:8080"
-      - "8092:8091"
-
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
     hostname: zookeeper
@@ -81,3 +72,81 @@ services:
       - kafka1
       - kafka2
       - init-topic-1
+
+  generator:
+    image: generator
+    container_name: generator
+    build:
+      context: generator/
+    ports:
+      - "8081:8080"
+      - "8092:8091"
+    depends_on:
+      - zookeeper
+      - kafka1
+      - kafka2
+    environment:
+      KAFKA_BOOTSTRAP_SERVER: host.docker.internal:9092,host.docker.internal:9094
+
+  cassandra-seed:
+    image: cassandra:4.1
+    container_name: cassandra-seed
+    hostname: cassandra-seed
+    environment:
+      - CASSANDRA_CLUSTER_NAME=MyCluster
+      - CASSANDRA_SEEDS=cassandra-seed,cassandra-node2
+      - CASSANDRA_DC=datacenter1
+      - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+    volumes:
+      - cassandra-seed-data:/var/lib/cassandra
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "9042:9042"
+    networks:
+      - cassandra-network
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  cassandra-node2:
+    image: cassandra:4.1
+    container_name: cassandra-node2
+    hostname: cassandra-node2
+    depends_on:
+      cassandra-seed:
+        condition: service_healthy
+    environment:
+      - CASSANDRA_CLUSTER_NAME=MyCluster
+      - CASSANDRA_SEEDS=cassandra-seed,cassandra-node2
+      - CASSANDRA_DC=datacenter1
+      - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+    volumes:
+      - cassandra-node2-data:/var/lib/cassandra
+    networks:
+      - cassandra-network
+
+  api:
+    image: api
+    container_name: api
+    build:
+      context: api/
+    ports:
+      - "8080:8080"
+      - "8091:8091"
+    depends_on:
+      - cassandra-node2
+      - cassandra-seed
+    environment:
+      CASSANDRA_HOST: host.docker.internal
+
+volumes:
+  cassandra-seed-data:
+  cassandra-node2-data:
+
+networks:
+  cassandra-network:
+    driver: bridge

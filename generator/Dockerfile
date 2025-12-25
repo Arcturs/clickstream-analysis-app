@@ -7,7 +7,7 @@ RUN mvn -f /opt/build/generator/pom.xml clean package -B -DskipTests
 
 
 FROM eclipse-temurin:23-jdk-alpine
-WORKDIR /opt/app/db
+WORKDIR /opt/app
 COPY --from=BUILDER /opt/build/generator/target/*.jar /opt/app/generator.jar
 
 EXPOSE 8080 8091
