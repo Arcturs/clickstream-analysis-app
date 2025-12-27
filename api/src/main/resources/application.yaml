@@ -1,6 +1,0 @@
-spring:
-  application.name: api
-  cassandra:
-    keyspace-name: clickstream
-    port: 9042
-    contact-points: ${CASSANDRA_HOST:localhost}
