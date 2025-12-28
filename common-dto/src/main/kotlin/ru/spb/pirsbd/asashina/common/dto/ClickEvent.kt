@@ -1,12 +1,13 @@
 package ru.spb.pirsbd.asashina.common.dto
 
+import java.time.LocalDateTime
 import java.util.UUID
 
 data class ClickEvent(
     var id: String = UUID.randomUUID().toString(),
     var type: String? = null,
-    var createdAt: String? = null,
-    var receivedAt: String? = null,
+    var createdAt: LocalDateTime? = null,
+    var receivedAt: LocalDateTime? = null,
     var sessionId: String? = null,
     var ip: String? = null,
     var userId: Int? = null,

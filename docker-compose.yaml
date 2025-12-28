@@ -100,7 +100,7 @@ services:
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
     volumes:
       - cassandra-seed-data:/var/lib/cassandra
-      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+      - ./init-scripts/cassandra:/docker-entrypoint-initdb.d:ro
     ports:
       - "9042:9042"
     networks:
@@ -143,9 +143,38 @@ services:
     environment:
       CASSANDRA_HOST: host.docker.internal
 
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001" # Web UI порт
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_DOMAIN: localhost
+    volumes:
+      - minio_data:/data
+
+  mc:
+    image: minio/mc:RELEASE.2025-07-21T05-28-08Z
+    container_name: mc
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb local/click-analysis --ignore-existing;
+      mc policy set public local/click-analysis;
+      tail -f /dev/null
+      "
+    depends_on:
+      - minio
+
 volumes:
   cassandra-seed-data:
   cassandra-node2-data:
+  minio_data:
 
 networks:
   cassandra-network:
