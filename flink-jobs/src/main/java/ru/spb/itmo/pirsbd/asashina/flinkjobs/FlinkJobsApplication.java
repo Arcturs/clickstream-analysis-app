@@ -2,8 +2,12 @@ package ru.spb.itmo.pirsbd.asashina.flinkjobs;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkCassandraSinkProperties;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkMinioSourceProperties;
 
 @SpringBootApplication
+@EnableConfigurationProperties({ FlinkMinioSourceProperties.class, FlinkCassandraSinkProperties.class })
 public class FlinkJobsApplication {
 
     public static void main(String[] args) {
