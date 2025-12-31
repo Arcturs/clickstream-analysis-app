@@ -88,7 +88,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVER: host.docker.internal:9092,host.docker.internal:9094
 
-  cassandra-seed:
+  cassandra-seed-dwh:
     image: cassandra:4.1
     container_name: cassandra-seed
     hostname: cassandra-seed
@@ -111,7 +111,7 @@ services:
       timeout: 10s
       retries: 10
 
-  cassandra-node2:
+  cassandra-node2-dwh:
     image: cassandra:4.1
     container_name: cassandra-node2
     hostname: cassandra-node2
@@ -138,8 +138,8 @@ services:
       - "8080:8080"
       - "8091:8091"
     depends_on:
-      - cassandra-node2
-      - cassandra-seed
+      - cassandra-node2-dwh
+      - cassandra-seed-dwh
     environment:
       CASSANDRA_HOST: host.docker.internal
 
