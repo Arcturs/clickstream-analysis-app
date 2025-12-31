@@ -13,8 +13,6 @@ public class FlinkCassandraSinkProperties {
     private int port;
     private String keyspace;
     private String localDatacenter;
-    private String username;
-    private String password;
 
     public List<String> getContactPoints() {
         return contactPoints;
@@ -46,22 +44,6 @@ public class FlinkCassandraSinkProperties {
 
     public void setLocalDatacenter(String localDatacenter) {
         this.localDatacenter = localDatacenter;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
     }
 
 }

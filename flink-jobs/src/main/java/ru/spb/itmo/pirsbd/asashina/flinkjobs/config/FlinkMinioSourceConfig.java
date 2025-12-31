@@ -27,8 +27,7 @@ public class FlinkMinioSourceConfig {
         var path = new Path(inputPath);
 
         log.info("Creating MinIO source from path: {}", inputPath);
-        return FileSource
-                .forRecordStreamFormat(new TextLineInputFormat(), path)
+        return FileSource.forRecordStreamFormat(new TextLineInputFormat(), path)
                 .monitorContinuously(Duration.ofSeconds(properties.getWatchInterval()))
                 .setFileEnumerator(NonSplittingRecursiveEnumerator::new)
                 .build();

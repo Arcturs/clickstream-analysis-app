@@ -4,10 +4,14 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkCassandraSinkProperties;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkKafkaSourceProperties;
 import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkMinioSourceProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({ FlinkMinioSourceProperties.class, FlinkCassandraSinkProperties.class })
+@EnableConfigurationProperties({
+        FlinkMinioSourceProperties.class,
+        FlinkCassandraSinkProperties.class,
+        FlinkKafkaSourceProperties.class})
 public class FlinkJobsApplication {
 
     public static void main(String[] args) {

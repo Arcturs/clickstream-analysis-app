@@ -47,9 +47,7 @@ class DataGenerator {
         val deviceType = DeviceType.entries.random()
 
         val createdDate = randomDate()
-        val receivedDate = LocalDateTime.parse(createdDate)
-            .plusSeconds(Random.nextLong(0, 30))
-            .toString()
+        val receivedDate = createdDate.plusSeconds(Random.nextLong(0, 30))
 
         val userIdVal = Random.nextInt(100)
         val sessionIdVal = "session_${userIdVal}_${Random.nextInt(1000, 9999)}"
@@ -150,7 +148,7 @@ class DataGenerator {
                 "${Random.nextInt(0, 255)}.${Random.nextInt(1, 255)}"
     }
 
-    private fun randomDate(): String {
+    private fun randomDate(): LocalDateTime {
         val randomDays = (0..29).random()
         val randomHours = (0..23).random()
         val randomMinutes = (0..59).random()
@@ -161,7 +159,6 @@ class DataGenerator {
             .minusHours(randomHours.toLong())
             .minusMinutes(randomMinutes.toLong())
             .minusSeconds(randomSeconds.toLong())
-            .format(DateTimeFormatter.ISO_DATE_TIME)
     }
 
     private companion object {
