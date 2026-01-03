@@ -20,3 +20,16 @@ spring:
     bucket: click-analysis
     input-path: local/
     watch-interval: 60000
+
+server:
+  port: 8080
+
+management:
+  server.port: 8091
+  endpoint:
+    health.access: read_only
+    info.access: read_only
+    metrics.access: unrestricted
+    prometheus.access: unrestricted
+    loggers.access: read_only
+  endpoints.web.exposure.include: health,info,prometheus,metrics,loggers

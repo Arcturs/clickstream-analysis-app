@@ -1,0 +1,11 @@
+pymongo
+apache-airflow
+pandas
+numpy
+clickhouse-driver
+cassandra-driver
+sqlalchemy
+psycopg2-binary
+requests
+python-dotenv
+scipy

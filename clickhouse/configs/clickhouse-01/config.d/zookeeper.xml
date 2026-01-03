@@ -1,0 +1,44 @@
+<yandex>
+    <zookeeper>
+        <node>
+            <host>host.docker.internal</host>
+            <port>2182</port>
+        </node>
+        <session_timeout_ms>30000</session_timeout_ms>
+        <operation_timeout_ms>10000</operation_timeout_ms>
+        <root>/clickhouse</root>
+    </zookeeper>
+
+    <remote_servers>
+        <cluster_2shards_1replicas>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>clickhouse-01</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>clickhouse-02</host>
+                    <port>9001</port>
+                </replica>
+            </shard>
+        </cluster_2shards_1replicas>
+
+        <replicated_cluster>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>clickhouse-01</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>clickhouse-02</host>
+                    <port>9001</port>
+                </replica>
+            </shard>
+        </replicated_cluster>
+    </remote_servers>
+</yandex>
