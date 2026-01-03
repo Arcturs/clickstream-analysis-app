@@ -1,10 +1,17 @@
 spring:
   application.name: flink-jobs
+  profiles.active: ${ACTIVE_PROFILE:minio-to-cassandra}
   cassandra:
-    contact-points: ${CASSANDRA_HOST:localhost}
-    keyspace: analytics
-    port: 9042
-    local-datacenter: datacenter1
+    dwh:
+      contact-points: ${CASSANDRA_HOST:localhost}
+      keyspace: clickstream
+      port: 9042
+      local-datacenter: datacenter1
+    clean.dwh:
+      contact-points: ${CASSANDRA_HOST:localhost}
+      keyspace: analytics
+      port: 9043
+      local-datacenter: datacenter1
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVER:localhost:9092,localhost:9094}
     topic: app.messages

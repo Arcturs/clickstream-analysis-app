@@ -1,4 +1,4 @@
-package ru.spb.itmo.pirsbd.asashina.flinkjobs.model.entity;
+package ru.spb.itmo.pirsbd.asashina.flinkjobs.model;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -59,5 +59,97 @@ public class CassandraClickEvent {
         this.scrollPosition = scrollPosition;
         this.timestampOffset = timestampOffset;
         this.metadata = metadata;
+    }
+
+    public Integer getUserId() {
+        return userId;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public LocalDateTime getReceivedAt() {
+        return receivedAt;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public String getIp() {
+        return ip;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public String getReferrer() {
+        return referrer;
+    }
+
+    public String getDeviceType() {
+        return deviceType;
+    }
+
+    public String getUserAgent() {
+        return userAgent;
+    }
+
+    public String getEventTitle() {
+        return eventTitle;
+    }
+
+    public String getElementId() {
+        return elementId;
+    }
+
+    public Integer getX() {
+        return x;
+    }
+
+    public Integer getY() {
+        return y;
+    }
+
+    public String getElementText() {
+        return elementText;
+    }
+
+    public String getElementClass() {
+        return elementClass;
+    }
+
+    public String getPageTitle() {
+        return pageTitle;
+    }
+
+    public Integer getViewportWidth() {
+        return viewportWidth;
+    }
+
+    public Integer getViewportHeight() {
+        return viewportHeight;
+    }
+
+    public Double getScrollPosition() {
+        return scrollPosition;
+    }
+
+    public Long getTimestampOffset() {
+        return timestampOffset;
+    }
+
+    public Map<String, String> getMetadata() {
+        return metadata;
     }
 }

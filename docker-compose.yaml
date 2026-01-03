@@ -90,21 +90,21 @@ services:
 
   cassandra-seed-dwh:
     image: cassandra:4.1
-    container_name: cassandra-seed
-    hostname: cassandra-seed
+    container_name: cassandra-seed-dwh
+    hostname: cassandra-seed-dwh
     environment:
-      - CASSANDRA_CLUSTER_NAME=MyCluster
-      - CASSANDRA_SEEDS=cassandra-seed,cassandra-node2
-      - CASSANDRA_DC=datacenter1
-      - CASSANDRA_RACK=rack1
-      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_SEEDS: cassandra-seed-dwh,cassandra-node-dwh
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
     volumes:
-      - cassandra-seed-data:/var/lib/cassandra
-      - ./init-scripts/cassandra:/docker-entrypoint-initdb.d:ro
+      - cassandra-seed-data-dwh:/var/lib/cassandra
+      - ./init-scripts/cassandra-dwh:/docker-entrypoint-initdb.d:ro
     ports:
       - "9042:9042"
     networks:
-      - cassandra-network
+      - cassandra-network-dwh
     healthcheck:
       test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
       interval: 30s
@@ -113,21 +113,21 @@ services:
 
   cassandra-node2-dwh:
     image: cassandra:4.1
-    container_name: cassandra-node2
-    hostname: cassandra-node2
+    container_name: cassandra-node2-dwh
+    hostname: cassandra-node2-dwh
     depends_on:
       cassandra-seed:
         condition: service_healthy
     environment:
-      - CASSANDRA_CLUSTER_NAME=MyCluster
-      - CASSANDRA_SEEDS=cassandra-seed,cassandra-node2
-      - CASSANDRA_DC=datacenter1
-      - CASSANDRA_RACK=rack1
-      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_SEEDS: cassandra-seed-dwh,cassandra-node2-dwh
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
     volumes:
-      - cassandra-node2-data:/var/lib/cassandra
+      - cassandra-node2-data-dwh:/var/lib/cassandra
     networks:
-      - cassandra-network
+      - cassandra-network-dwh
 
   api:
     image: api
@@ -171,11 +171,109 @@ services:
     depends_on:
       - minio
 
+  minio-to-cassandra:
+    image: minio-to-cassandra
+    container_name: minio-to-cassandra
+    build:
+      context: flink-jobs/
+    ports:
+      - "8082:8080"
+      - "8093:8091"
+    depends_on:
+      - cassandra-node2-dwh
+      - cassandra-seed-dwh
+      - minio
+      - mc
+    environment:
+      ACTIVE_PROFILE: minio-to-cassandra
+      CASSANDRA_HOST: host.docker.internal
+
+  kafka-to-cassandra:
+    image: kafka-to-cassandra
+    container_name: kafka-to-cassandra
+    build:
+      context: flink-jobs/
+    ports:
+      - "8083:8080"
+      - "8094:8091"
+    depends_on:
+      - cassandra-node2-dwh
+      - cassandra-seed-dwh
+      - kafka1
+      - kafka2
+      - init-topic-1
+    environment:
+      ACTIVE_PROFILE: minio-to-cassandra
+      CASSANDRA_HOST: host.docker.internal
+      KAFKA_BOOTSTRAP_SERVER: host.docker.internal:9092,host.docker.internal:9094
+
+  cassandra-seed-dwh-clean:
+    image: cassandra:4.1
+    container_name: cassandra-seed-dwh-clean
+    hostname: cassandra-seed-dwh-clean
+    environment:
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_SEEDS: cassandra-seed-dwh-clean,cassandra-node2-dwh-clean
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    volumes:
+      - cassandra-seed-data-dwh-clean:/var/lib/cassandra
+      - ./init-scripts/cassandra-dwh-clean:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "9043:9042"
+    networks:
+      - cassandra-network-dwh-clean
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  cassandra-node2-dwh-clean:
+    image: cassandra:4.1
+    container_name: cassandra-node2-dwh-clean
+    hostname: cassandra-node2-dwh-clean
+    depends_on:
+      cassandra-seed:
+        condition: service_healthy
+    environment:
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_SEEDS: cassandra-seed-dwh-clean,cassandra-node2-dwh-clean
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    volumes:
+      - cassandra-node2-data-clean:/var/lib/cassandra
+    networks:
+      - cassandra-network-dwh-clean
+
+  cassandra-to-cassandra:
+    image: cassandra-to-cassandra
+    container_name: cassandra-to-cassandra
+    build:
+      context: flink-jobs/
+    ports:
+      - "8084:8080"
+      - "8095:8091"
+    depends_on:
+      - cassandra-node2-dwh
+      - cassandra-seed-dwh
+      - cassandra-node2-dwh-clean
+      - cassandra-seed-dwh-clean
+    environment:
+      ACTIVE_PROFILE: cassandra-to-cassandra
+      CASSANDRA_HOST: host.docker.internal
+
 volumes:
-  cassandra-seed-data:
-  cassandra-node2-data:
+  cassandra-seed-data-dwh:
+  cassandra-node2-data-dwh:
   minio_data:
+  cassandra-seed-data-dwh-clean:
+  cassandra-node2-data-dwh-clean:
 
 networks:
-  cassandra-network:
+  cassandra-network-dwh:
+    driver: bridge
+  cassandra-network-dwh-clean:
     driver: bridge

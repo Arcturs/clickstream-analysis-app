@@ -1,13 +1,8 @@
 package ru.spb.itmo.pirsbd.asashina.flinkjobs.config;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
-
 import java.util.List;
 
-@ConfigurationPropertiesScan
-@ConfigurationProperties(prefix = "spring.cassandra")
-public class FlinkCassandraSinkProperties {
+public abstract class FlinkCassandraProperties {
 
     private List<String> contactPoints;
     private int port;

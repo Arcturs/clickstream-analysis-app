@@ -1,4 +1,4 @@
-package ru.spb.itmo.pirsbd.asashina.flinkjobs.processor;
+package ru.spb.itmo.pirsbd.asashina.flinkjobs.processor.cassandra.sink;
 
 import com.datastax.driver.core.ConsistencyLevel;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -9,8 +9,8 @@ import org.apache.flink.streaming.connectors.cassandra.SimpleMapperOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkCassandraSinkProperties;
-import ru.spb.itmo.pirsbd.asashina.flinkjobs.model.entity.CassandraClickEvent;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkCassandraDwhProperties;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.model.CassandraClickEvent;
 import ru.spb.pirsbd.asashina.common.dto.ClickEvent;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -18,9 +18,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Component
-public class FlinkCassandraSink {
+public class FlinkCassandraDwhSink {
 
-    private static final Logger log = LoggerFactory.getLogger(FlinkCassandraSink.class);
+    private static final Logger log = LoggerFactory.getLogger(FlinkCassandraDwhSink.class);
     private static final String INSERT_QUERY = """
             INSERT INTO clickstream.click_events (
                 user_id, created_at, id, type, received_at, session_id,
@@ -31,9 +31,9 @@ public class FlinkCassandraSink {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
 
-    private final FlinkCassandraSinkProperties properties;
+    private final FlinkCassandraDwhProperties properties;
 
-    public FlinkCassandraSink(FlinkCassandraSinkProperties properties) {
+    public FlinkCassandraDwhSink(FlinkCassandraDwhProperties properties) {
         this.properties = properties;
     }
 

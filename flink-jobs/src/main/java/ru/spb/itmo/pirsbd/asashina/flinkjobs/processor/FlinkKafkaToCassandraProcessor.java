@@ -6,6 +6,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.processor.cassandra.sink.FlinkCassandraDwhSink;
 import ru.spb.pirsbd.asashina.common.dto.ClickEvent;
 import java.util.Objects;
 
@@ -15,9 +16,9 @@ public class FlinkKafkaToCassandraProcessor {
     private static final Logger log = LoggerFactory.getLogger(FlinkKafkaToCassandraProcessor.class);
 
     private final KafkaSource<ClickEvent> kafkaSource;
-    private final FlinkCassandraSink cassandraSink;
+    private final FlinkCassandraDwhSink cassandraSink;
 
-    public FlinkKafkaToCassandraProcessor(KafkaSource<ClickEvent> kafkaSource, FlinkCassandraSink cassandraSink) {
+    public FlinkKafkaToCassandraProcessor(KafkaSource<ClickEvent> kafkaSource, FlinkCassandraDwhSink cassandraSink) {
         this.kafkaSource = kafkaSource;
         this.cassandraSink = cassandraSink;
     }
