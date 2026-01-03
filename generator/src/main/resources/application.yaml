@@ -1,15 +1,10 @@
 spring:
-  application.name: api
-  cassandra:
-    keyspace-name: clickstream
-    port: 9042
-    contact-points: ${CASSANDRA_HOST:localhost}
-    local-datacenter: datacenter1
-    connection:
-      connect-timeout: 10s
-      init-query-timeout: 10s
-    ssl.enabled: false
+  application.name: generator
+  kafka:
+    topic: app.messages
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVER:localhost:9092,localhost:9094}
 
+scheduler.batchSize: 500
 server:
   port: 8080
 

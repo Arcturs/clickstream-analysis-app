@@ -1,3 +1,43 @@
+x-airflow-common:
+  &airflow-common
+  # In order to add custom dependencies or upgrade provider distributions you can use your extended image.
+  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
+  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
+  build:
+    context: airflow/
+    dockerfile: Dockerfile
+  # build: .
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 10
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/config:/opt/airflow/config
+    - ./airflow/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+    mongo:
+      condition: service_healthy
+    cassandra-seed-dwh-clean:
+      condition: service_healthy
+    cassandra-node2-dwh-clean:
+      condition: service_healthy
+    clickhouse-01:
+      condition: service_healthy
+    clickhouse-02:
+      condition: service_healthy
+
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
@@ -265,15 +305,172 @@ services:
       ACTIVE_PROFILE: cassandra-to-cassandra
       CASSANDRA_HOST: host.docker.internal
 
+  clickhouse-zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: clickhouse-zookeeper
+    ports:
+      - "2182:2181"
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: zookeeper:2888:3888
+    networks:
+      - clickhouse-net
+
+  clickhouse-01:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: clickhouse-01
+    hostname: clickhouse-01
+    ports:
+      - "8123:8123"  # HTTP
+      - "9000:9000"  # Native protocol
+      - "9009:9009"  # Interserver HTTP
+    volumes:
+      - ./clickhouse/configs/clickhouse-01:/etc/clickhouse-server
+      - clickhouse-01-data:/var/lib/clickhouse
+      - ./clickhouse/logs/clickhouse-01:/var/log/clickhouse-server
+      - ./init-scripts/clickhouse/:/docker-entrypoint-initdb.d:ro
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    depends_on:
+      - clickhouse-zookeeper
+    networks:
+      - clickhouse-net
+
+  clickhouse-02:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: clickhouse-02
+    hostname: clickhouse-02
+    ports:
+      - "8124:8123"
+      - "9001:9000"
+      - "9010:9009"
+    volumes:
+      - ./clickhouse/configs/clickhouse-02:/etc/clickhouse-server
+      - clickhouse-02-data:/var/lib/clickhouse
+      - ./clickhouse/logs/clickhouse-02:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    depends_on:
+      - clickhouse-zookeeper
+    networks:
+      - clickhouse-net
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "airflow" ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "8090:8080"
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://localhost:8090/api/v2/monitor/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://localhost:8974/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    command: version
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
+    user: "0:0"
+
+  prometheus:
+    image: prom/prometheus:v3.2.0
+    container_name: prometheus
+    user: "$UID:$GID"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yaml'
+      - '--storage.tsdb.path=/'
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "3001:3001"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SERVER_HTTP_PORT=3001
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_SERVER_DOMAIN=localhost
+    depends_on:
+      - prometheus
+
 volumes:
   cassandra-seed-data-dwh:
   cassandra-node2-data-dwh:
   minio_data:
   cassandra-seed-data-dwh-clean:
   cassandra-node2-data-dwh-clean:
+  clickhouse-01-data:
+  clickhouse-02-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   cassandra-network-dwh:
     driver: bridge
   cassandra-network-dwh-clean:
+    driver: bridge
+  clickhouse-net:
     driver: bridge
