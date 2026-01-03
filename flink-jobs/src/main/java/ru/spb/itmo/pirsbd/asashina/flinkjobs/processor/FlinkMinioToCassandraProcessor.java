@@ -11,6 +11,7 @@ import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.processor.cassandra.sink.FlinkCassandraDwhSink;
 import ru.spb.pirsbd.asashina.common.dto.ClickEvent;
 import ru.spb.pirsbd.asashina.common.dto.ClickEventPayload;
 import java.time.LocalDateTime;
@@ -25,9 +26,9 @@ public class FlinkMinioToCassandraProcessor {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final FileSource<String> fileSource;
-    private final FlinkCassandraSink cassandraSink;
+    private final FlinkCassandraDwhSink cassandraSink;
 
-    public FlinkMinioToCassandraProcessor(FileSource<String> fileSource, FlinkCassandraSink cassandraSink) {
+    public FlinkMinioToCassandraProcessor(FileSource<String> fileSource, FlinkCassandraDwhSink cassandraSink) {
         this.fileSource = fileSource;
         this.cassandraSink = cassandraSink;
     }

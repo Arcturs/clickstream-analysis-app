@@ -2,6 +2,7 @@ package ru.spb.itmo.pirsbd.asashina.flinkjobs.service;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import ru.spb.itmo.pirsbd.asashina.flinkjobs.processor.FlinkMinioToCassandraProcessor;
 import java.util.concurrent.ExecutorService;
@@ -9,6 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@ConditionalOnProperty(prefix = "spring", name = "profiles.active", havingValue = "minio-to-cassandra")
 public class FlinkMinioToCassandraService {
 
     private final FlinkMinioToCassandraProcessor processor;

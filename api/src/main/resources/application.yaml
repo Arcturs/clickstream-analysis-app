@@ -1,7 +1,7 @@
 spring:
   application.name: api
   cassandra:
-    keyspace-name: analytics
+    keyspace-name: clickstream
     port: 9042
     contact-points: ${CASSANDRA_HOST:localhost}
     local-datacenter: datacenter1

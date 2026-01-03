@@ -4,19 +4,20 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import ru.spb.itmo.pirsbd.asashina.flinkjobs.processor.FlinkKafkaToCassandraProcessor;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.processor.FlinkCassandraToCassandraProcessor;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Service
-@ConditionalOnProperty(prefix = "spring", name = "profiles.active", havingValue = "kafka-to-cassandra")
-public class FlinkKafkaToCassandraService {
+@ConditionalOnProperty(prefix = "spring", name = "profiles.active", havingValue = "cassandra-to-cassandra")
+public class FlinkCassandraToCassandraService {
 
-    private final FlinkKafkaToCassandraProcessor processor;
+    private final FlinkCassandraToCassandraProcessor processor;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-    public FlinkKafkaToCassandraService(FlinkKafkaToCassandraProcessor processor) {
+    public FlinkCassandraToCassandraService(FlinkCassandraToCassandraProcessor processor) {
         this.processor = processor;
     }
 
