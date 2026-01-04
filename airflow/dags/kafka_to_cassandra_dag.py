@@ -184,7 +184,7 @@ def kafka_to_cassandra_pipeline():
 
             events_data = []
             messages_processed = 0
-            max_messages = 200
+            max_messages = 1000
             max_time_seconds = 120
 
             start_time = datetime.now()

@@ -142,8 +142,6 @@ services:
                   'DC1': 2
                   };
 
-          USE clickstream;
-
           CREATE TABLE IF NOT EXISTS clickstream.click_events
           (
               user_id          INT,
@@ -183,9 +181,7 @@ services:
                   'DC1': 2
                   };
 
-          USE analytics;
-
-          CREATE TABLE IF NOT EXISTS clean_click_events
+          CREATE TABLE IF NOT EXISTS analytics.clean_click_events
           (
               user_id          INT,
               created_at       TIMESTAMP,
@@ -197,15 +193,16 @@ services:
               event_title      TEXT,
               element_id       TEXT,
               x                INT,
-              y                INT
+              y                INT,
+              PRIMARY KEY ((user_id), created_at, id)
           ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
 
-          CREATE INDEX IF NOT EXISTS idx_clean_click_events_session_id ON clean_click_events (session_id);
-          CREATE INDEX IF NOT EXISTS idx_clean_click_events_type ON clean_click_events (type);
-          CREATE INDEX IF NOT EXISTS idx_clean_click_events_event_title ON clean_click_events (event_title);
-          CREATE INDEX IF NOT EXISTS idx_clean_click_events_device_type ON clean_click_events (device_type);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_session_id ON analytics.clean_click_events (session_id);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_type ON analytics.clean_click_events (type);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_event_title ON analytics.clean_click_events (event_title);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_device_type ON analytics.clean_click_events (device_type);
 
-          CREATE TABLE IF NOT EXISTS invalid_events
+          CREATE TABLE IF NOT EXISTS analytics.invalid_events
           (
               user_id          INT,
               id               TEXT,
@@ -213,7 +210,8 @@ services:
               session_id       TEXT,
               event_time       TIMESTAMP,
               processed_at     TIMESTAMP,
-              validation_error TEXT
+              validation_error TEXT,
+              PRIMARY KEY ((user_id), id)
           ) WITH CLUSTERING ORDER BY (id ASC);
         \"
         echo 'Checking replication on second node...' &&
@@ -268,20 +266,6 @@ services:
       "
     depends_on:
       - minio
-
-  cassandra-to-cassandra:
-    image: cassandra-to-cassandra
-    container_name: cassandra-to-cassandra
-    build:
-      context: flink-jobs/
-    ports:
-      - "8084:8080"
-      - "8095:8091"
-    depends_on:
-      - cassandra-init-dwh
-    environment:
-      ACTIVE_PROFILE: cassandra-to-cassandra
-      CASSANDRA_HOST: host.docker.internal
 
   clickhouse-zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1

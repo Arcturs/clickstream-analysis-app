@@ -16,10 +16,3 @@ scrape_configs:
       - targets: [ 'host.docker.internal:8091' ]
         labels:
           application: 'api'
-  - job_name: 'cassandra-to-cassandra'
-    metrics_path: '/actuator/prometheus'
-    scrape_interval: 5s
-    static_configs:
-      - targets: [ 'host.docker.internal:8095' ]
-        labels:
-          application: 'cassandra-to-cassandra'
