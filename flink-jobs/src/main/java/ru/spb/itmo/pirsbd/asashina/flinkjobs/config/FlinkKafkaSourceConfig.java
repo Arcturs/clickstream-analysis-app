@@ -4,7 +4,7 @@ import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.formats.json.JsonDeserializationSchema;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import ru.spb.pirsbd.asashina.common.dto.ClickEvent;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.model.ClickEvent;
 
 @Configuration
 public class FlinkKafkaSourceConfig {

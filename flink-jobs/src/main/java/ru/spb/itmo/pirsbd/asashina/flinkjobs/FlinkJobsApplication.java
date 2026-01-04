@@ -11,8 +11,7 @@ import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkMinioSourceProperties;
 @EnableConfigurationProperties({
         FlinkMinioSourceProperties.class,
         FlinkCassandraDwhProperties.class,
-        FlinkKafkaSourceProperties.class,
-        FlinkCassandraDwhCleanProperties.class
+        FlinkKafkaSourceProperties.class
 })
 public class FlinkJobsApplication {
 

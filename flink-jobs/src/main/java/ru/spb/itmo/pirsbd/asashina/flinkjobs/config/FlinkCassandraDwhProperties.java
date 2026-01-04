@@ -3,11 +3,12 @@ package ru.spb.itmo.pirsbd.asashina.flinkjobs.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
+import java.io.Serializable;
 import java.util.List;
 
 @ConfigurationPropertiesScan
 @ConfigurationProperties(prefix = "spring.cassandra.dwh")
-public class FlinkCassandraDwhProperties {
+public class FlinkCassandraDwhProperties implements Serializable {
 
     private List<String> contactPoints;
     private int port;

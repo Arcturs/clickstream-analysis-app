@@ -6,8 +6,8 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.model.ClickEvent;
 import ru.spb.itmo.pirsbd.asashina.flinkjobs.processor.cassandra.sink.FlinkCassandraDwhSink;
-import ru.spb.pirsbd.asashina.common.dto.ClickEvent;
 import java.util.Objects;
 
 @Component
@@ -28,7 +28,7 @@ public class FlinkKafkaToCassandraProcessor {
         var textStream = env.fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "Kafka Source")
                 .filter(Objects::nonNull)
                 .setParallelism(3)
-                .keyBy(event -> String.format("%d_%s", event.getUserId(), event.getId()));
+                .keyBy(event -> String.format("%d_%s", event.userId(), event.id()));
         var sink = cassandraSink.clickEventSink(textStream);
         env.execute();
     }

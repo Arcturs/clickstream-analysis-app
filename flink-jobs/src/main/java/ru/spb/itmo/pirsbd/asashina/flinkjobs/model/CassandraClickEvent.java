@@ -1,33 +1,82 @@
 package ru.spb.itmo.pirsbd.asashina.flinkjobs.model;
 
+import com.datastax.driver.mapping.annotations.Column;
+import com.datastax.driver.mapping.annotations.Table;
+
 import java.time.LocalDateTime;
 import java.util.Map;
 
+@Table(keyspace = "clickstream", name = "click_events")
 public class CassandraClickEvent {
 
-    private final Integer userId;
-    private final LocalDateTime createdAt;
-    private final String id;
-    private final String type;
-    private final LocalDateTime receivedAt;
-    private final String sessionId;
-    private final String ip;
-    private final String url;
-    private final String referrer;
-    private final String deviceType;
-    private final String userAgent;
-    private final String eventTitle;
-    private final String elementId;
-    private final Integer x;
-    private final Integer y;
-    private final String elementText;
-    private final String elementClass;
-    private final String pageTitle;
-    private final Integer viewportWidth;
-    private final Integer viewportHeight;
-    private final Double scrollPosition;
-    private final Long timestampOffset;
-    private final Map<String, String> metadata;
+    @Column(name = "user_id")
+    private Integer userId;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @Column(name = "id")
+    private String id;
+
+    @Column(name = "type")
+    private String type;
+
+    @Column(name = "received_at")
+    private LocalDateTime receivedAt;
+
+    @Column(name = "session_id")
+    private String sessionId;
+
+    @Column(name = "ip")
+    private String ip;
+
+    @Column(name = "url")
+    private String url;
+
+    @Column(name = "referrer")
+    private String referrer;
+
+    @Column(name = "device_type")
+    private String deviceType;
+
+    @Column(name = "user_agent")
+    private String userAgent;
+
+    @Column(name = "event_title")
+    private String eventTitle;
+
+    @Column(name = "element_id")
+    private String elementId;
+
+    @Column(name = "x")
+    private Integer x;
+
+    @Column(name = "y")
+    private Integer y;
+
+    @Column(name = "element_text")
+    private String elementText;
+
+    @Column(name = "element_class")
+    private String elementClass;
+    
+    @Column(name = "page_title")
+    private String pageTitle;
+
+    @Column(name = "viewport_width")
+    private Integer viewportWidth;
+
+    @Column(name = "viewport_height")
+    private Integer viewportHeight;
+
+    @Column(name = "scroll_position")
+    private Double scrollPosition;
+
+    @Column(name = "timestamp_offset")
+    private Long timestampOffset;
+
+    @Column(name = "metadat")
+    private Map<String, String> metadata;
 
     public CassandraClickEvent(
             Integer userId, LocalDateTime createdAt, String id, String type, LocalDateTime receivedAt, String sessionId,
@@ -121,12 +170,12 @@ public class CassandraClickEvent {
         return y;
     }
 
-    public String getElementText() {
-        return elementText;
-    }
-
     public String getElementClass() {
         return elementClass;
+    }
+
+    public String getElementText() {
+        return elementText;
     }
 
     public String getPageTitle() {
@@ -151,5 +200,97 @@ public class CassandraClickEvent {
 
     public Map<String, String> getMetadata() {
         return metadata;
+    }
+
+    public void setUserId(Integer userId) {
+        this.userId = userId;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public void setReceivedAt(LocalDateTime receivedAt) {
+        this.receivedAt = receivedAt;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    public void setIp(String ip) {
+        this.ip = ip;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public void setReferrer(String referrer) {
+        this.referrer = referrer;
+    }
+
+    public void setDeviceType(String deviceType) {
+        this.deviceType = deviceType;
+    }
+
+    public void setUserAgent(String userAgent) {
+        this.userAgent = userAgent;
+    }
+
+    public void setEventTitle(String eventTitle) {
+        this.eventTitle = eventTitle;
+    }
+
+    public void setElementId(String elementId) {
+        this.elementId = elementId;
+    }
+
+    public void setX(Integer x) {
+        this.x = x;
+    }
+
+    public void setY(Integer y) {
+        this.y = y;
+    }
+
+    public void setElementText(String elementText) {
+        this.elementText = elementText;
+    }
+
+    public void setElementClass(String elementClass) {
+        this.elementClass = elementClass;
+    }
+
+    public void setPageTitle(String pageTitle) {
+        this.pageTitle = pageTitle;
+    }
+
+    public void setViewportWidth(Integer viewportWidth) {
+        this.viewportWidth = viewportWidth;
+    }
+
+    public void setViewportHeight(Integer viewportHeight) {
+        this.viewportHeight = viewportHeight;
+    }
+
+    public void setScrollPosition(Double scrollPosition) {
+        this.scrollPosition = scrollPosition;
+    }
+
+    public void setTimestampOffset(Long timestampOffset) {
+        this.timestampOffset = timestampOffset;
+    }
+
+    public void setMetadata(Map<String, String> metadata) {
+        this.metadata = metadata;
     }
 }

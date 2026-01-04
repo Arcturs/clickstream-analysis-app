@@ -8,13 +8,13 @@ from cassandra.cluster import Cluster
 
 CASSANDRA_CONFIG = {
     'hosts': ['host.docker.internal'],
-    'port': 9043,
+    'port': 9042,
     'keyspace': 'analytics'
 }
 
 CLICKHOUSE_CONFIG = {
     'host': 'host.docker.internal',
-    'port': 9000,
+    'port': 9002,
     'user': 'admin',
     'password': 'admin',
     'database': 'analytics'

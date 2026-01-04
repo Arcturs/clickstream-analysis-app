@@ -1,41 +1,3 @@
-x-airflow-common:
-  &airflow-common
-  # In order to add custom dependencies or upgrade provider distributions you can use your extended image.
-  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
-  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  build:
-    context: airflow/
-    dockerfile: Dockerfile
-  # build: .
-  environment:
-    &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CORE__FERNET_KEY: ''
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 10
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
-  volumes:
-    - ./airflow/dags:/opt/airflow/dags
-    - ./airflow/logs:/opt/airflow/logs
-    - ./airflow/config:/opt/airflow/config
-    - ./airflow/plugins:/opt/airflow/plugins
-  user: "${AIRFLOW_UID:-50000}:0"
-  depends_on:
-    &airflow-common-depends-on
-    postgres:
-      condition: service_healthy
-    cassandra-seed-dwh-clean:
-      condition: service_healthy
-    cassandra-node2-dwh-clean:
-      condition: service_healthy
-    clickhouse-01:
-      condition: service_healthy
-    clickhouse-02:
-      condition: service_healthy
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
@@ -301,26 +263,11 @@ services:
       mc alias set local http://minio:9000 minioadmin minioadmin;
       mc mb local/click-analysis --ignore-existing;
       mc policy set public local/click-analysis;
+      mc anonymous set public local/click-analysis;
       tail -f /dev/null
       "
     depends_on:
       - minio
-
-  minio-to-cassandra:
-    image: minio-to-cassandra
-    container_name: minio-to-cassandra
-    build:
-      context: flink-jobs/
-    ports:
-      - "8082:8080"
-      - "8093:8091"
-    depends_on:
-      - cassandra-init-dwh
-      - minio
-      - mc
-    environment:
-      ACTIVE_PROFILE: minio-to-cassandra
-      CASSANDRA_HOST: host.docker.internal
 
   kafka-to-cassandra:
     image: kafka-to-cassandra
@@ -369,7 +316,7 @@ services:
     hostname: clickhouse-01
     ports:
       - "8123:8123"  # HTTP
-      - "9000:9000"  # Native protocol
+      - "9002:9000"  # Native protocol
       - "9009:9009"  # Interserver HTTP
     volumes:
       - ./clickhouse/configs/clickhouse-01:/etc/clickhouse-server
@@ -396,7 +343,7 @@ services:
     hostname: clickhouse-02
     ports:
       - "8124:8123"
-      - "9001:9000"
+      - "9003:9000"
       - "9010:9009"
     volumes:
       - ./clickhouse/configs/clickhouse-02:/etc/clickhouse-server
@@ -415,64 +362,6 @@ services:
       - clickhouse-zookeeper
     networks:
       - clickhouse-net
-
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
-    volumes:
-      - postgres-db-volume:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "airflow" ]
-      interval: 10s
-      retries: 5
-      start_period: 5s
-    restart: always
-
-  airflow-apiserver:
-    <<: *airflow-common
-    command: api-server
-    ports:
-      - "8090:8080"
-    healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://localhost:8090/api/v2/monitor/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
-
-  airflow-scheduler:
-    <<: *airflow-common
-    command: scheduler
-    healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://localhost:8974/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
-
-  airflow-init:
-    <<: *airflow-common
-    command: version
-    environment:
-      <<: *airflow-common-env
-      AIRFLOW_DB_UPGRADE: 'true'
-      _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: airflow
-      _AIRFLOW_WWW_USER_PASSWORD: airflow
-    user: "0:0"
 
   prometheus:
     image: prom/prometheus:v3.2.0
@@ -509,7 +398,6 @@ volumes:
   minio_data:
   clickhouse-01-data:
   clickhouse-02-data:
-  postgres-db-volume:
   prometheus-data:
   grafana-data:
 

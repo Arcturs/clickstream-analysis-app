@@ -43,7 +43,7 @@ public class DeduplicationFunction extends ProcessWindowFunction<CleanClickEvent
             return;
         }
 
-        eventList.sort(Comparator.comparing(CleanClickEvent::getCreatedAt));
+        eventList.sort(Comparator.comparing(CleanClickEvent::createdAt));
         Set<String> seenEventIds = new HashSet<>();
         List<CleanClickEvent> cleanedEvents = new ArrayList<>();
 
@@ -64,7 +64,7 @@ public class DeduplicationFunction extends ProcessWindowFunction<CleanClickEvent
             if (!isDuplicateInState && !isDuplicateInWindow) {
                 cleanedEvents.add(event);
                 seenEventIds.add(eventKey);
-                processedEventsState.put(eventKey, event.getCreatedAt());
+                processedEventsState.put(eventKey, event.createdAt());
             } else {
                 log.debug("Marked as duplicate: {}", eventKey);
             }
@@ -84,23 +84,23 @@ public class DeduplicationFunction extends ProcessWindowFunction<CleanClickEvent
     }
 
     private String createEventKey(CleanClickEvent event) {
-        if ("CLICK".equalsIgnoreCase(event.getType())) {
+        if ("CLICK".equalsIgnoreCase(event.type())) {
             return String.format("%s_%s_%s_%s_%s_%d_%d",
-                    event.getId(),
-                    event.getUserId(),
-                    event.getSessionId(),
-                    event.getType(),
-                    event.getCreatedAt() != null ? event.getCreatedAt() : LocalDateTime.now(),
-                    event.getX() != null ? event.getX() : 0,
-                    event.getY() != null ? event.getY() : 0
+                    event.id(),
+                    event.userId(),
+                    event.sessionId(),
+                    event.type(),
+                    event.createdAt() != null ? event.createdAt() : LocalDateTime.now(),
+                    event.x() != null ? event.x() : 0,
+                    event.y() != null ? event.y() : 0
             );
         }
         return String.format("%s_%s_%s_%s_%s",
-                event.getId(),
-                event.getUserId(),
-                event.getSessionId(),
-                event.getType(),
-                event.getCreatedAt() != null ? event.getCreatedAt() : LocalDateTime.now()
+                event.id(),
+                event.userId(),
+                event.sessionId(),
+                event.type(),
+                event.createdAt() != null ? event.createdAt() : LocalDateTime.now()
         );
     }
 

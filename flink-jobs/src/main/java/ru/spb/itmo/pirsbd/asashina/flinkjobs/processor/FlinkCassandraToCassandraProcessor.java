@@ -62,11 +62,11 @@ public class FlinkCassandraToCassandraProcessor {
 
     private String createDeduplicationKey(CleanClickEvent event) {
         return String.format("%s_%s_%s_%s_%s",
-                event.getId(),
-                event.getUserId(),
-                event.getSessionId(),
-                event.getType(),
-                event.getEventTitle()
+                event.id(),
+                event.userId(),
+                event.sessionId(),
+                event.type(),
+                event.eventTitle()
         );
     }
 
