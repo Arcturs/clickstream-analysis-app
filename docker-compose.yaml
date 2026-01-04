@@ -269,22 +269,6 @@ services:
     depends_on:
       - minio
 
-  kafka-to-cassandra:
-    image: kafka-to-cassandra
-    container_name: kafka-to-cassandra
-    build:
-      context: flink-jobs/
-    ports:
-      - "8083:8080"
-      - "8094:8091"
-    depends_on:
-      - cassandra-init-dwh
-      - init-topic-1
-    environment:
-      ACTIVE_PROFILE: minio-to-cassandra
-      CASSANDRA_HOST: host.docker.internal
-      KAFKA_BOOTSTRAP_SERVER: host.docker.internal:9092,host.docker.internal:9094
-
   cassandra-to-cassandra:
     image: cassandra-to-cassandra
     container_name: cassandra-to-cassandra

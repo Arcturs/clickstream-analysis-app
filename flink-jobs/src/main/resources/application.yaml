@@ -7,14 +7,6 @@ spring:
       keyspace: clickstream
       port: 9042
       local-datacenter: DC1
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVER:localhost:9092,localhost:9094}
-    topic: app.messages
-    groupId: app-messages
-  minio:
-    bucket: click-analysis
-    input-path: local/
-    watch-interval: 60000
 
 server:
   port: 8080

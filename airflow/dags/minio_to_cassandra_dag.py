@@ -4,10 +4,11 @@ import logging
 import json
 import uuid
 from typing import List, Optional, Dict, Any
-from dataclasses import dataclass, field
 from minio import Minio
 from cassandra.cluster import Cluster
 from cassandra.policies import RoundRobinPolicy
+
+from data_classes import ClickEventPayload, ClickEvent
 
 MINIO_CONFIG = {
     'endpoint': 'host.docker.internal:9000',
@@ -25,38 +26,6 @@ CASSANDRA_CONFIG = {
 }
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ClickEventPayload:
-    event_title: Optional[str] = None
-    element_id: Optional[str] = None
-    x: Optional[int] = None
-    y: Optional[int] = None
-    element_text: Optional[str] = None
-    element_class: Optional[str] = None
-    page_title: Optional[str] = None
-    viewport_width: Optional[int] = None
-    viewport_height: Optional[int] = None
-    scroll_position: Optional[float] = None
-    timestamp_offset: Optional[int] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class ClickEvent:
-    id: str
-    type: str
-    created_at: datetime
-    received_at: datetime
-    session_id: str
-    ip: str
-    user_id: int
-    url: str
-    referrer: Optional[str] = None
-    device_type: str = ""
-    user_agent: str = ""
-    payload: Optional[ClickEventPayload] = None
 
 
 def get_minio_client():
