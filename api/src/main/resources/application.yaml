@@ -2,9 +2,9 @@ spring:
   application.name: api
   cassandra:
     keyspace-name: clickstream
-    port: 9042
     contact-points: ${CASSANDRA_HOST:localhost}
-    local-datacenter: datacenter1
+    port: 9042
+    local-datacenter: DC1
     connection:
       connect-timeout: 10s
       init-query-timeout: 10s

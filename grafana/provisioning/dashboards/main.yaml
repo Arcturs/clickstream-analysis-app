@@ -10,7 +10,7 @@ providers:
       path: /var/lib/grafana/dashboards
       foldersFromFilesStructure: true
   - name: "Clickhouse"
-    orgId: 2
+    orgId: 1
     type: file
     disableDeletion: false
     updateIntervalSeconds: 15

@@ -1,7 +1,7 @@
 CREATE KEYSPACE IF NOT EXISTS analytics
     WITH REPLICATION = {
         'class': 'NetworkTopologyStrategy',
-        'datacenter1': 2
+        'DC1': 2
         };
 
 USE analytics;

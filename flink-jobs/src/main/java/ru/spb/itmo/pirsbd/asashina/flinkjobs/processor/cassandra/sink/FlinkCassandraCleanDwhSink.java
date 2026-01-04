@@ -7,7 +7,7 @@ import org.apache.flink.streaming.connectors.cassandra.SimpleMapperOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkCassandraDwhCleanProperties;
+import ru.spb.itmo.pirsbd.asashina.flinkjobs.config.FlinkCassandraDwhProperties;
 import ru.spb.itmo.pirsbd.asashina.flinkjobs.model.CleanClickEvent;
 import ru.spb.itmo.pirsbd.asashina.flinkjobs.model.InvalidEvent;
 
@@ -27,9 +27,9 @@ public class FlinkCassandraCleanDwhSink {
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """;
 
-    private final FlinkCassandraDwhCleanProperties properties;
+    private final FlinkCassandraDwhProperties properties;
 
-    public FlinkCassandraCleanDwhSink(FlinkCassandraDwhCleanProperties properties) {
+    public FlinkCassandraCleanDwhSink(FlinkCassandraDwhProperties properties) {
         this.properties = properties;
     }
 

@@ -132,17 +132,14 @@ services:
     hostname: cassandra-seed-dwh
     environment:
       CASSANDRA_CLUSTER_NAME: MyCluster
-      CASSANDRA_SEEDS: cassandra-seed-dwh,cassandra-node-dwh
-      CASSANDRA_DC: datacenter1
+      CASSANDRA_SEEDS: cassandra-seed-dwh
+      CASSANDRA_DC: DC1
       CASSANDRA_RACK: rack1
       CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
     volumes:
       - cassandra-seed-data-dwh:/var/lib/cassandra
-      - ./init-scripts/cassandra-dwh:/docker-entrypoint-initdb.d:ro
     ports:
       - "9042:9042"
-    networks:
-      - cassandra-network-dwh
     healthcheck:
       test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
       interval: 30s
@@ -158,14 +155,115 @@ services:
         condition: service_healthy
     environment:
       CASSANDRA_CLUSTER_NAME: MyCluster
-      CASSANDRA_SEEDS: cassandra-seed-dwh,cassandra-node2-dwh
-      CASSANDRA_DC: datacenter1
-      CASSANDRA_RACK: rack1
+      CASSANDRA_SEEDS: cassandra-seed-dwh
+      CASSANDRA_DC: DC1
+      CASSANDRA_RACK: rack2
       CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
     volumes:
       - cassandra-node2-data-dwh:/var/lib/cassandra
-    networks:
-      - cassandra-network-dwh
+
+  cassandra-init-dwh:
+    image: cassandra:4.1
+    container_name: cassandra-init-dwh
+    depends_on:
+      - cassandra-seed-dwh
+      - cassandra-node2-dwh
+    command: >
+      bash -c "
+        echo 'Waiting for cluster to stabilize...' &&
+        sleep 15 &&
+        echo 'Initializing keyspace and tables...' &&
+        cqlsh cassandra-seed-dwh -e \"
+          CREATE KEYSPACE IF NOT EXISTS clickstream
+              WITH REPLICATION = {
+                  'class': 'NetworkTopologyStrategy',
+                  'DC1': 2
+                  };
+
+          USE clickstream;
+
+          CREATE TABLE IF NOT EXISTS clickstream.click_events
+          (
+              user_id          INT,
+              created_at       TIMESTAMP,
+              id               TEXT,
+              type             TEXT,
+              received_at      TIMESTAMP,
+              session_id       TEXT,
+              ip               TEXT,
+              url              TEXT,
+              referrer         TEXT,
+              device_type      TEXT,
+              user_agent       TEXT,
+              event_title      TEXT,
+              element_id       TEXT,
+              x                INT,
+              y                INT,
+              element_text     TEXT,
+              element_class    TEXT,
+              page_title       TEXT,
+              viewport_width   INT,
+              viewport_height  INT,
+              scroll_position  DOUBLE,
+              timestamp_offset BIGINT,
+              metadata         MAP<TEXT, TEXT>,
+              PRIMARY KEY ((user_id), created_at, id)
+          ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
+
+          CREATE INDEX IF NOT EXISTS idx_click_events_session_id ON clickstream.click_events (session_id);
+          CREATE INDEX IF NOT EXISTS idx_click_events_type ON clickstream.click_events (type);
+          CREATE INDEX IF NOT EXISTS idx_click_events_event_title ON clickstream.click_events (event_title);
+          CREATE INDEX IF NOT EXISTS idx_click_events_device_type ON clickstream.click_events (device_type);
+          
+          CREATE KEYSPACE IF NOT EXISTS analytics
+              WITH REPLICATION = {
+                  'class': 'NetworkTopologyStrategy',
+                  'DC1': 2
+                  };
+
+          USE analytics;
+
+          CREATE TABLE IF NOT EXISTS clean_click_events
+          (
+              user_id          INT,
+              created_at       TIMESTAMP,
+              id               TEXT,
+              type             TEXT,
+              session_id       TEXT,
+              url              TEXT,
+              device_type      TEXT,
+              event_title      TEXT,
+              element_id       TEXT,
+              x                INT,
+              y                INT
+          ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
+
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_session_id ON clean_click_events (session_id);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_type ON clean_click_events (type);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_event_title ON clean_click_events (event_title);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_device_type ON clean_click_events (device_type);
+
+          CREATE TABLE IF NOT EXISTS invalid_events
+          (
+              user_id          INT,
+              id               TEXT,
+              type             TEXT,
+              session_id       TEXT,
+              event_time       TIMESTAMP,
+              processed_at     TIMESTAMP,
+              validation_error TEXT
+          ) WITH CLUSTERING ORDER BY (id ASC);
+        \"
+        echo 'Checking replication on second node...' &&
+        sleep 15 &&
+        cqlsh cassandra-node2-dwh -e \"
+          USE clickstream;
+          SELECT * FROM clickstream.click_events;
+          USE analytics;
+          SELECT * FROM analytics.clean_click_events;
+        \" &&
+        echo 'Cluster initialization completed successfully!'
+      "
 
   api:
     image: api
@@ -176,8 +274,7 @@ services:
       - "8080:8080"
       - "8091:8091"
     depends_on:
-      - cassandra-node2-dwh
-      - cassandra-seed-dwh
+      - cassandra-init-dwh
     environment:
       CASSANDRA_HOST: host.docker.internal
 
@@ -218,8 +315,7 @@ services:
       - "8082:8080"
       - "8093:8091"
     depends_on:
-      - cassandra-node2-dwh
-      - cassandra-seed-dwh
+      - cassandra-init-dwh
       - minio
       - mc
     environment:
@@ -235,56 +331,12 @@ services:
       - "8083:8080"
       - "8094:8091"
     depends_on:
-      - cassandra-node2-dwh
-      - cassandra-seed-dwh
-      - kafka1
-      - kafka2
+      - cassandra-init-dwh
       - init-topic-1
     environment:
       ACTIVE_PROFILE: minio-to-cassandra
       CASSANDRA_HOST: host.docker.internal
       KAFKA_BOOTSTRAP_SERVER: host.docker.internal:9092,host.docker.internal:9094
-
-  cassandra-seed-dwh-clean:
-    image: cassandra:4.1
-    container_name: cassandra-seed-dwh-clean
-    hostname: cassandra-seed-dwh-clean
-    environment:
-      CASSANDRA_CLUSTER_NAME: MyCluster
-      CASSANDRA_SEEDS: cassandra-seed-dwh-clean,cassandra-node2-dwh-clean
-      CASSANDRA_DC: datacenter1
-      CASSANDRA_RACK: rack1
-      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
-    volumes:
-      - cassandra-seed-data-clean:/var/lib/cassandra
-      - ./init-scripts/cassandra-dwh-clean:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "9043:9042"
-    networks:
-      - cassandra-network-dwh-clean
-    healthcheck:
-      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-
-  cassandra-node2-dwh-clean:
-    image: cassandra:4.1
-    container_name: cassandra-node2-dwh-clean
-    hostname: cassandra-node2-dwh-clean
-    depends_on:
-      cassandra-seed-dwh-clean:
-        condition: service_healthy
-    environment:
-      CASSANDRA_CLUSTER_NAME: MyCluster
-      CASSANDRA_SEEDS: cassandra-seed-dwh-clean,cassandra-node2-dwh-clean
-      CASSANDRA_DC: datacenter1
-      CASSANDRA_RACK: rack1
-      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
-    volumes:
-      - cassandra-node2-data-clean:/var/lib/cassandra
-    networks:
-      - cassandra-network-dwh-clean
 
   cassandra-to-cassandra:
     image: cassandra-to-cassandra
@@ -295,10 +347,7 @@ services:
       - "8084:8080"
       - "8095:8091"
     depends_on:
-      - cassandra-node2-dwh
-      - cassandra-seed-dwh
-      - cassandra-node2-dwh-clean
-      - cassandra-seed-dwh-clean
+      - cassandra-init-dwh
     environment:
       ACTIVE_PROFILE: cassandra-to-cassandra
       CASSANDRA_HOST: host.docker.internal
@@ -458,8 +507,6 @@ volumes:
   cassandra-seed-data-dwh:
   cassandra-node2-data-dwh:
   minio_data:
-  cassandra-seed-data-clean:
-  cassandra-node2-data-clean:
   clickhouse-01-data:
   clickhouse-02-data:
   postgres-db-volume:
@@ -467,9 +514,5 @@ volumes:
   grafana-data:
 
 networks:
-  cassandra-network-dwh:
-    driver: bridge
-  cassandra-network-dwh-clean:
-    driver: bridge
   clickhouse-net:
     driver: bridge

@@ -9,11 +9,14 @@ datasources:
     isDefault: true
     editable: true
   - name: Clickhouse
-    type: grafana-clickhouse-datasource
+    type: clickhouse
     orgId: 1
+    access: proxy
+    url: http://host.docker.internal:8123
+    basicAuth: false
     jsonData:
       defaultDatabase: analytics
-      port: 9000
+      port: 8123
       host: host.docker.internal
       username: admin
       tlsSkipVerify: false

@@ -34,7 +34,7 @@ public class FlinkCassandraSourceConfig {
                 CassandraClickEvent.class,
                 """
                 SELECT *
-                FROM %s.clean_click_events
+                FROM %s.click_events
                 WHERE created_at >= %s
                 """.formatted(properties.getKeyspace(), LocalDateTime.now().minusMinutes(1)),
                 new SimpleMapperOptions()
