@@ -1,4 +1,4 @@
-package ru.spb.pirsbd.asashina.common.dto
+package ru.spb.itmo.pirsbd.asashina.generator.model
 
 import java.time.LocalDateTime
 import java.util.UUID

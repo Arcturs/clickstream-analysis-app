@@ -27,8 +27,6 @@ x-airflow-common:
     &airflow-common-depends-on
     postgres:
       condition: service_healthy
-    mongo:
-      condition: service_healthy
     cassandra-seed-dwh-clean:
       condition: service_healthy
     cassandra-node2-dwh-clean:
@@ -156,7 +154,7 @@ services:
     container_name: cassandra-node2-dwh
     hostname: cassandra-node2-dwh
     depends_on:
-      cassandra-seed:
+      cassandra-seed-dwh:
         condition: service_healthy
     environment:
       CASSANDRA_CLUSTER_NAME: MyCluster
@@ -258,7 +256,7 @@ services:
       CASSANDRA_RACK: rack1
       CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
     volumes:
-      - cassandra-seed-data-dwh-clean:/var/lib/cassandra
+      - cassandra-seed-data-clean:/var/lib/cassandra
       - ./init-scripts/cassandra-dwh-clean:/docker-entrypoint-initdb.d:ro
     ports:
       - "9043:9042"
@@ -275,7 +273,7 @@ services:
     container_name: cassandra-node2-dwh-clean
     hostname: cassandra-node2-dwh-clean
     depends_on:
-      cassandra-seed:
+      cassandra-seed-dwh-clean:
         condition: service_healthy
     environment:
       CASSANDRA_CLUSTER_NAME: MyCluster
@@ -460,10 +458,11 @@ volumes:
   cassandra-seed-data-dwh:
   cassandra-node2-data-dwh:
   minio_data:
-  cassandra-seed-data-dwh-clean:
-  cassandra-node2-data-dwh-clean:
+  cassandra-seed-data-clean:
+  cassandra-node2-data-clean:
   clickhouse-01-data:
   clickhouse-02-data:
+  postgres-db-volume:
   prometheus-data:
   grafana-data:
 
