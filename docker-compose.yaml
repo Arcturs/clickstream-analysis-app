@@ -89,19 +89,15 @@ services:
       KAFKA_BOOTSTRAP_SERVER: host.docker.internal:9092,host.docker.internal:9094
 
   cassandra-seed-dwh:
-    image: cassandra:4.1
+    image: scylladb/scylla:2025.4
     container_name: cassandra-seed-dwh
     hostname: cassandra-seed-dwh
-    environment:
-      CASSANDRA_CLUSTER_NAME: MyCluster
-      CASSANDRA_SEEDS: cassandra-seed-dwh
-      CASSANDRA_DC: DC1
-      CASSANDRA_RACK: rack1
-      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
     volumes:
       - cassandra-seed-data-dwh:/var/lib/cassandra
+      - ./cassandra/scylla.yaml:/etc/scylla/scylla.yaml
     ports:
       - "9042:9042"
+    command: --smp 1 --dc DC1 --rack rack1 --seeds cassandra-seed-dwh
     healthcheck:
       test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
       interval: 30s
@@ -109,20 +105,16 @@ services:
       retries: 10
 
   cassandra-node2-dwh:
-    image: cassandra:4.1
+    image: scylladb/scylla:2025.4
     container_name: cassandra-node2-dwh
     hostname: cassandra-node2-dwh
     depends_on:
       cassandra-seed-dwh:
         condition: service_healthy
-    environment:
-      CASSANDRA_CLUSTER_NAME: MyCluster
-      CASSANDRA_SEEDS: cassandra-seed-dwh
-      CASSANDRA_DC: DC1
-      CASSANDRA_RACK: rack2
-      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    command: --smp 1 --dc DC1 --rack rack2 --seeds cassandra-seed-dwh,cassandra-node2-dwh
     volumes:
       - cassandra-node2-data-dwh:/var/lib/cassandra
+      - ./cassandra/scylla.yaml:/etc/scylla/scylla.yaml
 
   cassandra-init-dwh:
     image: cassandra:4.1
@@ -267,69 +259,83 @@ services:
     depends_on:
       - minio
 
-  clickhouse-zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.1
-    container_name: clickhouse-zookeeper
+  clickhouse-keeper:
+    image: clickhouse/clickhouse-keeper:25.8-alpine
+    container_name: clickhouse-keeper
+    volumes:
+      - ./clickhouse/configs/clickhouse-keeper/config.xml:/etc/clickhouse-keeper/keeper_config.xml
     ports:
-      - "2182:2181"
-    environment:
-      ZOO_MY_ID: 2
-      ZOO_SERVERS: zookeeper:2888:3888
+      - "9181:9181"
     networks:
       - clickhouse-net
 
   clickhouse-01:
-    image: clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server:25.8-alpine
     container_name: clickhouse-01
     hostname: clickhouse-01
     ports:
       - "8123:8123"  # HTTP
       - "9002:9000"  # Native protocol
-      - "9009:9009"  # Interserver HTTP
     volumes:
-      - ./clickhouse/configs/clickhouse-01:/etc/clickhouse-server
+      - ./clickhouse/configs/clickhouse-01/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./clickhouse/configs/clickhouse-01/users.xml:/etc/clickhouse-server/users.d/users.xml
       - clickhouse-01-data:/var/lib/clickhouse
       - ./clickhouse/logs/clickhouse-01:/var/log/clickhouse-server
-      - ./init-scripts/clickhouse/:/docker-entrypoint-initdb.d:ro
     environment:
-      CLICKHOUSE_DB: analytics
       CLICKHOUSE_USER: admin
       CLICKHOUSE_PASSWORD: admin
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
+    healthcheck:
+      test: [ "CMD", "clickhouse-client", "--host", "localhost", "--user", "admin", "--password", "admin", "--query", "SELECT 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     depends_on:
-      - clickhouse-zookeeper
+      - clickhouse-keeper
     networks:
       - clickhouse-net
 
   clickhouse-02:
-    image: clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server:25.8-alpine
     container_name: clickhouse-02
     hostname: clickhouse-02
     ports:
       - "8124:8123"
       - "9003:9000"
-      - "9010:9009"
     volumes:
-      - ./clickhouse/configs/clickhouse-02:/etc/clickhouse-server
+      - ./clickhouse/configs/clickhouse-02/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./clickhouse/configs/clickhouse-02/users.xml:/etc/clickhouse-server/users.d/users.xml
       - clickhouse-02-data:/var/lib/clickhouse
       - ./clickhouse/logs/clickhouse-02:/var/log/clickhouse-server
     environment:
-      CLICKHOUSE_DB: analytics
       CLICKHOUSE_USER: admin
       CLICKHOUSE_PASSWORD: admin
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
+    healthcheck:
+      test: [ "CMD", "clickhouse-client", "--host", "localhost", "--user", "admin", "--password", "admin", "--query", "SELECT 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     depends_on:
-      - clickhouse-zookeeper
+      - clickhouse-keeper
     networks:
       - clickhouse-net
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:25.8-alpine
+    container_name: clickhouse-init
+    depends_on:
+      clickhouse-01:
+        condition: service_healthy
+      clickhouse-02:
+        condition: service_healthy
+    volumes:
+      - ./init-scripts/clickhouse/init-tables.sh:/init-tables.sh
+    networks:
+      - clickhouse-net
+    command: ["sh", "/init-tables.sh"]
 
   prometheus:
     image: prom/prometheus:v3.2.0

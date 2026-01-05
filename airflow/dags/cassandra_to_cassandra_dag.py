@@ -93,6 +93,14 @@ class InvalidEvent:
     validation_error: str
 
 
+@dataclass
+class ProcessedEventKey:
+    user_id: int
+    session_id: str
+    created_at: datetime
+    id: str
+
+
 def get_cassandra_session() -> Tuple[Session, Cluster]:
     try:
         cluster = Cluster(
@@ -227,15 +235,41 @@ class CassandraEventProcessor:
             logger.error(f"Error in batch execution: {e}")
             raise
 
+    @staticmethod
+    def execute_batch_delete(session: Session, prepared_stmt, batch_params: List[tuple]) -> Tuple[int, int]:
+        try:
+            results = execute_concurrent_with_args(
+                session,
+                prepared_stmt,
+                batch_params,
+                concurrency=5
+            )
+
+            success_count = 0
+            failed_count = 0
+
+            for success, result in results:
+                if success:
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    logger.warning(f"Failed to delete: {result}")
+
+            return success_count, failed_count
+
+        except Exception as e:
+            logger.error(f"Error in batch deletion: {e}")
+            raise
+
 
 @dag(
     'cassandra_to_cassandra_etl',
-    description='ETL pipeline from Cassandra to Cassandra (different keyspaces)',
+    description='ETL pipeline from Cassandra to Cassandra (different keyspaces) with deletion',
     schedule=None,
     start_date=datetime(2023, 1, 1),
     catchup=False,
     max_active_runs=1,
-    tags=['cassandra', 'etl', 'clickstream'],
+    tags=['cassandra', 'etl', 'clickstream', 'cleanup'],
     default_args={
         'owner': 'airflow',
         'depends_on_past': False,
@@ -270,6 +304,7 @@ def cassandra_to_cassandra_pipeline():
 
             valid_events = []
             invalid_events = []
+            processed_keys = []
 
             seen_hashes = set()
 
@@ -322,6 +357,12 @@ def cassandra_to_cassandra_pipeline():
                         if event_hash not in seen_hashes:
                             seen_hashes.add(event_hash)
                             valid_events.append(clean_event)
+                            processed_keys.append({
+                                'user_id': event.user_id,
+                                'session_id': event.session_id,
+                                'created_at': event.created_at.isoformat() if event.created_at else None,
+                                'id': event.id
+                            })
                         else:
                             logger.debug(f"Skipped duplicate event: {event.id}")
 
@@ -344,6 +385,12 @@ def cassandra_to_cassandra_pipeline():
                         if event_hash not in seen_hashes:
                             seen_hashes.add(event_hash)
                             valid_events.append(clean_event)
+                            processed_keys.append({
+                                'user_id': event.user_id,
+                                'session_id': event.session_id,
+                                'created_at': event.created_at.isoformat() if event.created_at else None,
+                                'id': event.id
+                            })
 
                         invalid_event = InvalidEvent(
                             user_id=event.user_id,
@@ -355,6 +402,12 @@ def cassandra_to_cassandra_pipeline():
                             validation_error="; ".join(errors)
                         )
                         invalid_events.append(invalid_event)
+                        processed_keys.append({
+                            'user_id': event.user_id,
+                            'session_id': event.session_id,
+                            'created_at': event.created_at.isoformat() if event.created_at else None,
+                            'id': event.id
+                        })
 
                     else:
                         invalid_event = InvalidEvent(
@@ -367,6 +420,12 @@ def cassandra_to_cassandra_pipeline():
                             validation_error="; ".join(errors)
                         )
                         invalid_events.append(invalid_event)
+                        processed_keys.append({
+                            'user_id': event.user_id,
+                            'session_id': event.session_id,
+                            'created_at': event.created_at.isoformat() if event.created_at else None,
+                            'id': event.id
+                        })
 
                 except Exception as e:
                     logger.error(f"Error processing row: {e}")
@@ -403,10 +462,12 @@ def cassandra_to_cassandra_pipeline():
                         'validation_error': e.validation_error
                     }
                     for e in invalid_events
-                ]
+                ],
+                'processed_keys': processed_keys
             }
 
-            logger.info(f"Extraction complete: {len(valid_events)} valid, {len(invalid_events)} invalid events")
+            logger.info(
+                f"Extraction complete: {len(valid_events)} valid, {len(invalid_events)} invalid events, {len(processed_keys)} to delete")
 
             return json.dumps(result, default=str)
 
@@ -414,7 +475,7 @@ def cassandra_to_cassandra_pipeline():
             logger.error(f"Error in extract_and_transform: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            return json.dumps({'valid_events': [], 'invalid_events': []})
+            return json.dumps({'valid_events': [], 'invalid_events': [], 'processed_keys': []})
 
     @task
     def load_clean_events(**context) -> Dict[str, int]:
@@ -603,7 +664,97 @@ def cassandra_to_cassandra_pipeline():
             return {'loaded': 0, 'failed': 1, 'total': 0}
 
     @task
-    def log_results(clean_results: Dict[str, int], invalid_results: Dict[str, int]):
+    def delete_processed_events(**context) -> Dict[str, int]:
+        try:
+            logger.info("Starting deletion of processed events from source table")
+
+            task_instance = context['ti']
+            events_json = task_instance.xcom_pull(task_ids='extract_and_transform')
+
+            if not events_json:
+                logger.info("No events to delete")
+                return {'deleted': 0, 'failed': 0, 'total': 0}
+
+            events_data = json.loads(events_json)
+            processed_keys_data = events_data.get('processed_keys', [])
+
+            if not processed_keys_data:
+                logger.info("No processed events to delete")
+                return {'deleted': 0, 'failed': 0, 'total': 0}
+
+            session, cluster = get_cassandra_session()
+            processor = CassandraEventProcessor()
+
+            delete_query = f"""
+                DELETE FROM {CASSANDRA_CONFIG['source_keyspace']}.click_events 
+                WHERE user_id = ? AND session_id = ? AND created_at = ? AND id = ?
+            """
+
+            prepared_stmt = session.prepare(delete_query)
+            prepared_stmt.consistency_level = ConsistencyLevel.LOCAL_QUORUM
+
+            total_deleted = 0
+            total_failed = 0
+            batch_size = 100
+
+            delete_params = []
+            for key_data in processed_keys_data:
+                try:
+                    user_id = key_data['user_id']
+                    session_id = key_data['session_id']
+                    created_at = datetime.fromisoformat(key_data['created_at']) if key_data['created_at'] else None
+                    event_id = key_data['id']
+
+                    if user_id is not None and session_id and created_at and event_id:
+                        delete_params.append((
+                            user_id,
+                            session_id,
+                            created_at,
+                            event_id
+                        ))
+                    else:
+                        logger.warning(f"Skipping incomplete key data: {key_data}")
+                        total_failed += 1
+
+                except Exception as e:
+                    logger.error(f"Error preparing delete params: {e}")
+                    total_failed += 1
+
+            for i in range(0, len(delete_params), batch_size):
+                batch_params = delete_params[i:i + batch_size]
+
+                try:
+                    deleted, failed = processor.execute_batch_delete(session, prepared_stmt, batch_params)
+                    total_deleted += deleted
+                    total_failed += failed
+
+                    if (i // batch_size + 1) % 10 == 0:
+                        logger.info(f"Deleted {i + len(batch_params)} events")
+
+                except Exception as e:
+                    logger.error(f"Error executing delete batch: {e}")
+                    total_failed += len(batch_params)
+
+            session.shutdown()
+            cluster.shutdown()
+
+            result = {
+                'deleted': total_deleted,
+                'failed': total_failed,
+                'total': len(processed_keys_data)
+            }
+
+            logger.info(f"Deletion complete: {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error deleting processed events: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {'deleted': 0, 'failed': 1, 'total': 0}
+
+    @task
+    def log_results(clean_results: Dict[str, int], invalid_results: Dict[str, int], delete_results: Dict[str, int]):
         try:
             logger.info("=" * 60)
             logger.info("CASSANDRA TO CASSANDRA ETL PIPELINE RESULTS")
@@ -627,19 +778,29 @@ def cassandra_to_cassandra_pipeline():
                 success_rate = (invalid_results.get('loaded', 0) / invalid_results.get('total', 0)) * 100
                 logger.info(f"  Success rate: {success_rate:.2f}%")
 
+            logger.info("DELETION FROM SOURCE:")
+            logger.info(f"  Total to delete: {delete_results.get('total', 0)}")
+            logger.info(f"  Successfully deleted: {delete_results.get('deleted', 0)}")
+            logger.info(f"  Failed to delete: {delete_results.get('failed', 0)}")
+
+            if delete_results.get('total', 0) > 0:
+                deletion_rate = (delete_results.get('deleted', 0) / delete_results.get('total', 0)) * 100
+                logger.info(f"  Deletion rate: {deletion_rate:.2f}%")
+
             total_events = clean_results.get('total', 0) + invalid_results.get('total', 0)
             total_loaded = clean_results.get('loaded', 0) + invalid_results.get('loaded', 0)
             total_failed = clean_results.get('failed', 0) + invalid_results.get('failed', 0)
 
             logger.info("=" * 30)
             logger.info("OVERALL:")
-            logger.info(f"  Total events: {total_events}")
-            logger.info(f"  Total loaded: {total_loaded}")
-            logger.info(f"  Total failed: {total_failed}")
+            logger.info(f"  Total events processed: {total_events}")
+            logger.info(f"  Total successfully loaded: {total_loaded}")
+            logger.info(f"  Total failed to load: {total_failed}")
+            logger.info(f"  Total deleted from source: {delete_results.get('deleted', 0)}")
 
             if total_events > 0:
                 overall_success_rate = (total_loaded / total_events) * 100
-                logger.info(f"  Overall success rate: {overall_success_rate:.2f}%")
+                logger.info(f"  Overall load success rate: {overall_success_rate:.2f}%")
 
             logger.info("=" * 60)
 
@@ -649,17 +810,19 @@ def cassandra_to_cassandra_pipeline():
             if invalid_results.get('failed', 0) > 0:
                 logger.warning(f"Failed to load {invalid_results.get('failed', 0)} invalid events")
 
+            if delete_results.get('failed', 0) > 0:
+                logger.warning(f"Failed to delete {delete_results.get('failed', 0)} events from source")
+
         except Exception as e:
             logger.error(f"Error logging results: {e}")
 
-    # Определение зависимостей задач
     extract_transform_task = extract_and_transform()
     load_clean_task = load_clean_events()
     load_invalid_task = load_invalid_events()
-    log_results_task = log_results(load_clean_task, load_invalid_task)
+    delete_task = delete_processed_events()
+    log_results_task = log_results(load_clean_task, load_invalid_task, delete_task)
 
-    # Порядок выполнения задач
-    extract_transform_task >> [load_clean_task, load_invalid_task] >> log_results_task
+    extract_transform_task >> [load_clean_task, load_invalid_task] >> delete_task >> log_results_task
 
 
 dag = cassandra_to_cassandra_pipeline()

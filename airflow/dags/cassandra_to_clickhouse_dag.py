@@ -81,7 +81,7 @@ def cassandra_to_clickhouse_load():
                            element_id, \
                            x, \
                            y
-                    FROM click_events
+                    FROM analytics.clean_click_events
                     WHERE created_at >= %s \
                       AND created_at <= %s ALLOW FILTERING \
                     """
@@ -286,28 +286,42 @@ def cassandra_to_clickhouse_load():
 
             if df.empty:
                 logger.warning("No data for session duration calculation")
+                context['ti'].xcom_push(key='session_metrics', value=pd.DataFrame().to_json(date_format='iso'))
                 return 0
+
+            df = df.sort_values(['session_id', 'created_at'])
 
             session_durations = []
 
             for session_id in df['session_id'].unique():
-                session_data = df[df['session_id'] == session_id].sort_values('created_at')
+                session_data = df[df['session_id'] == session_id]
 
-                if len(session_data) > 1:
+                if len(session_data) == 1:
+                    session_start = session_data['created_at'].iloc[0]
+                    session_end = session_start
+                    duration = 0
+                else:
                     session_start = session_data['created_at'].min()
                     session_end = session_data['created_at'].max()
                     duration = (session_end - session_start).total_seconds()
 
-                    if 1 <= duration <= 86400:
-                        session_durations.append({
-                            'session_id': session_id,
-                            'user_id': session_data['user_id'].iloc[0] if len(session_data) > 0 else None,
-                            'duration_seconds': duration,
-                            'event_count': len(session_data),
-                            'start_time': session_start,
-                            'end_time': session_end,
-                            'date': session_start.date()
-                        })
+                if duration < 0:
+                    logger.warning(f"Negative duration for session {session_id}: {duration}")
+                    continue
+
+                if duration > 86400:
+                    logger.warning(f"Session {session_id} too long: {duration} seconds")
+                    duration = 86400
+
+                session_durations.append({
+                    'session_id': session_id,
+                    'user_id': session_data['user_id'].iloc[0] if not session_data.empty else None,
+                    'duration_seconds': duration,
+                    'event_count': len(session_data),
+                    'start_time': session_start,
+                    'end_time': session_end,
+                    'date': session_start.date()
+                })
 
             if session_durations:
                 sessions_df = pd.DataFrame(session_durations)
@@ -315,30 +329,46 @@ def cassandra_to_clickhouse_load():
                 sessions_df['date'] = pd.to_datetime(sessions_df['date'])
 
                 daily_metrics = sessions_df.groupby('date').agg({
-                    'duration_seconds': ['mean', 'median', 'std', 'count'],
-                    'session_id': 'nunique',
+                    'duration_seconds': ['mean', 'median', lambda x: x.std() if len(x) > 1 else 0],
+                    'session_id': 'count',
                     'user_id': 'nunique'
                 }).reset_index()
 
                 daily_metrics.columns = ['date', 'avg_duration', 'median_duration',
-                                         'std_duration', 'total_events', 'session_count', 'unique_users']
+                                         'std_duration', 'session_count', 'unique_users']
 
+                daily_metrics['total_events'] = sessions_df.groupby('date')['event_count'].sum().values
                 daily_metrics['avg_duration_minutes'] = daily_metrics['avg_duration'] / 60
                 daily_metrics['median_duration_minutes'] = daily_metrics['median_duration'] / 60
+
+                daily_metrics = daily_metrics.fillna(0)
+
+                daily_metrics['avg_duration'] = daily_metrics['avg_duration'].astype(float)
+                daily_metrics['median_duration'] = daily_metrics['median_duration'].astype(float)
+                daily_metrics['std_duration'] = daily_metrics['std_duration'].astype(float)
+                daily_metrics['session_count'] = daily_metrics['session_count'].astype(int)
+                daily_metrics['unique_users'] = daily_metrics['unique_users'].astype(int)
+                daily_metrics['total_events'] = daily_metrics['total_events'].astype(int)
+
+                logger.info(f"Calculated session metrics for {len(daily_metrics)} days")
+                logger.info(f"Session count per day: {daily_metrics['session_count'].sum()}")
+                logger.info(f"Average duration range: {daily_metrics['avg_duration'].min():.2f} - "
+                            f"{daily_metrics['avg_duration'].max():.2f} seconds")
+
             else:
                 daily_metrics = pd.DataFrame(columns=['date', 'avg_duration', 'median_duration',
-                                                      'std_duration', 'total_events', 'session_count',
-                                                      'unique_users', 'avg_duration_minutes',
+                                                      'std_duration', 'session_count', 'unique_users',
+                                                      'total_events', 'avg_duration_minutes',
                                                       'median_duration_minutes'])
+                logger.warning("No session durations calculated")
 
             context['ti'].xcom_push(key='session_metrics', value=daily_metrics.to_json(date_format='iso'))
-
-            logger.info(f"Calculated session metrics for {len(daily_metrics)} days")
 
             return len(daily_metrics)
 
         except Exception as e:
             logger.error(f"Failed to calculate session duration: {e}")
+            context['ti'].xcom_push(key='session_metrics', value=pd.DataFrame().to_json(date_format='iso'))
             raise
 
     @task
@@ -359,7 +389,7 @@ def cassandra_to_clickhouse_load():
                 'event_id': 'count'
             }).reset_index()
 
-            device_distribution.columns = ['date', 'device_type', 'unique_users', 'unique_sessions', 'total_events']
+            device_distribution.columns = ['date', 'device_type', 'unique_users', 'unique_sessions', 'device_events']
 
             daily_totals = df.groupby('date').agg({
                 'user_id': 'nunique',
@@ -369,20 +399,15 @@ def cassandra_to_clickhouse_load():
 
             daily_totals.columns = ['date', 'total_users', 'total_sessions', 'total_events']
 
-            device_distribution = device_distribution.merge(daily_totals, on='date')
+            device_distribution = device_distribution.merge(daily_totals, on='date', how='left')
             device_distribution['user_percentage'] = (device_distribution['unique_users'] /
                                                       device_distribution['total_users'] * 100)
             device_distribution['session_percentage'] = (device_distribution['unique_sessions'] /
                                                          device_distribution['total_sessions'] * 100)
-            device_distribution['event_percentage'] = (device_distribution['total_events'] /
-                                                       device_distribution['total_events_y'] * 100)
+            device_distribution['event_percentage'] = (device_distribution['device_events'] /
+                                                       device_distribution['total_events'] * 100)
 
             device_distribution['date'] = pd.to_datetime(device_distribution['date'])
-
-            device_distribution = device_distribution.rename(columns={
-                'total_events': 'device_events',
-                'total_events_y': 'daily_total_events'
-            })
 
             context['ti'].xcom_push(key='device_distribution', value=device_distribution.to_json(date_format='iso'))
 
