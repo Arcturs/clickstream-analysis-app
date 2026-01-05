@@ -50,7 +50,7 @@ class DataGenerator {
         val receivedDate = createdDate.plusSeconds(Random.nextLong(0, 30))
 
         val userIdVal = Random.nextInt(100)
-        val sessionIdVal = "session_${userIdVal}_${Random.nextInt(1000, 9999)}"
+        val sessionIdVal = "session_${userIdVal}_${Random.nextInt(1000, 1500)}"
 
         val payload = generatePayload(type, deviceType)
 
@@ -74,9 +74,9 @@ class DataGenerator {
 
         return ClickEventPayload(
             eventTitle = eventTitle.name,
-            elementId = if (eventType == CLICK) ELEMENTS.random() else null,
-            x = if (eventType == CLICK) Random.nextInt(0, 1920) else null,
-            y = if (eventType == CLICK) Random.nextInt(0, 1080) else null,
+            elementId = ELEMENTS.random(),
+            x = Random.nextInt(0, 1920),
+            y = Random.nextInt(0, 1080),
             elementText = if (eventType == CLICK) generateElementText(eventTitle) else null,
             elementClass = if (eventType == CLICK) generateElementClass() else null,
             pageTitle = "Page Title ${Random.nextInt(1, 100)}",

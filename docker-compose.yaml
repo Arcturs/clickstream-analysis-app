@@ -241,6 +241,7 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
       MINIO_DOMAIN: localhost
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     volumes:
       - minio_data:/data
 
@@ -276,6 +277,7 @@ services:
     ports:
       - "8123:8123"  # HTTP
       - "9002:9000"  # Native protocol
+      - "9363:9363"  # Metrics
     volumes:
       - ./clickhouse/configs/clickhouse-01/config.xml:/etc/clickhouse-server/config.d/config.xml
       - ./clickhouse/configs/clickhouse-01/users.xml:/etc/clickhouse-server/users.d/users.xml
@@ -303,6 +305,7 @@ services:
     ports:
       - "8124:8123"
       - "9003:9000"
+      - "9364:9363"
     volumes:
       - ./clickhouse/configs/clickhouse-02/config.xml:/etc/clickhouse-server/config.d/config.xml
       - ./clickhouse/configs/clickhouse-02/users.xml:/etc/clickhouse-server/users.d/users.xml
@@ -360,9 +363,10 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana/provisioning:/etc/grafana/provisioning
     environment:
-      - GF_SERVER_HTTP_PORT=3001
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_SERVER_DOMAIN=localhost
+      GF_SERVER_HTTP_PORT: 3001
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_SERVER_DOMAIN: localhost
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
     depends_on:
       - prometheus
 

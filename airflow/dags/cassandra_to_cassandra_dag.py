@@ -74,11 +74,7 @@ class CleanClickEvent:
     event_title: Optional[str]
 
     def get_deduplication_hash(self) -> str:
-        if self.type.upper() == "CLICK":
-            key = f"{self.id}_{self.user_id}_{self.session_id}_{self.type}_{self.created_at}_{self.x or 0}_{self.y or 0}"
-        else:
-            key = f"{self.id}_{self.user_id}_{self.session_id}_{self.type}_{self.created_at}"
-
+        key = f"{self.id}_{self.user_id}_{self.session_id}_{self.type}_{self.created_at}_{self.x or 0}_{self.y or 0}"
         return hashlib.md5(key.encode()).hexdigest()
 
 
@@ -166,9 +162,9 @@ class CassandraEventProcessor:
         if event.device_type and event.device_type.upper() not in CassandraEventProcessor.VALID_DEVICE_TYPES:
             errors.append(f"Invalid device type: {event.device_type}")
 
-        # Проверка для CLICK событий
-        if event.type and event.type.upper() == 'CLICK' and not event.element_id:
-            errors.append("Element ID is required for CLICK events")
+        # Проверка для событий
+        if event.type and not event.element_id:
+            errors.append("Element ID is required for events")
 
         # Определение статуса
         if not errors:
