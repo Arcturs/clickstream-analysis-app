@@ -4,76 +4,18 @@ from typing import Dict, Any, List, Optional
 import logging
 import json
 import uuid
-from kafka import KafkaConsumer
-from cassandra.cluster import Cluster, Session
-from cassandra.policies import DCAwareRoundRobinPolicy
+from cassandra.cluster import Session
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
+import sys
+import os
 
-from data_classes import ClickEvent
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-KAFKA_CONFIG = {
-    'bootstrap_servers': ['host.docker.internal:9092', 'host.docker.internal:9094'],
-    'topic': 'app.messages',
-    'group_id': 'app-messages-0',
-    'auto_offset_reset': 'earliest',
-    'enable_auto_commit': False,
-    'max_poll_records': 1000,
-    'session_timeout_ms': 30000,
-    'heartbeat_interval_ms': 10000
-}
-
-CASSANDRA_CONFIG = {
-    'hosts': ['host.docker.internal'],
-    'port': 9042,
-    'keyspace': 'clickstream',
-    'table': 'click_events',
-    'local_datacenter': 'DC1'
-}
+from src.data.data_classes import ClickEvent
+from src.repository.sessions import get_cassandra_session, get_kafka_consumer, KAFKA_CONFIG, CASSANDRA_CONFIG
 
 logger = logging.getLogger(__name__)
-
-
-def get_cassandra_session() -> tuple[Session, Cluster]:
-    try:
-        cluster = Cluster(
-            contact_points=CASSANDRA_CONFIG['hosts'],
-            port=CASSANDRA_CONFIG['port'],
-            load_balancing_policy=DCAwareRoundRobinPolicy(
-                local_dc=CASSANDRA_CONFIG['local_datacenter']
-            ),
-            protocol_version=4,
-            connect_timeout=30
-        )
-        session = cluster.connect(CASSANDRA_CONFIG['keyspace'])
-
-        logger.info(f"Successfully connected to Cassandra at {CASSANDRA_CONFIG['hosts']}")
-        return session, cluster
-    except Exception as e:
-        logger.error(f"Failed to connect to Cassandra: {e}")
-        raise
-
-
-def get_kafka_consumer() -> KafkaConsumer:
-    try:
-        consumer = KafkaConsumer(
-            KAFKA_CONFIG['topic'],
-            bootstrap_servers=KAFKA_CONFIG['bootstrap_servers'],
-            group_id=KAFKA_CONFIG['group_id'],
-            auto_offset_reset=KAFKA_CONFIG['auto_offset_reset'],
-            enable_auto_commit=KAFKA_CONFIG['enable_auto_commit'],
-            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            max_poll_records=KAFKA_CONFIG['max_poll_records'],
-            session_timeout_ms=KAFKA_CONFIG['session_timeout_ms'],
-            heartbeat_interval_ms=KAFKA_CONFIG['heartbeat_interval_ms'],
-            consumer_timeout_ms=10000
-        )
-
-        logger.info(f"Successfully created Kafka consumer for topic: {KAFKA_CONFIG['topic']}")
-        return consumer
-    except Exception as e:
-        logger.error(f"Failed to create Kafka consumer: {e}")
-        raise
 
 
 class KafkaEventProcessor:
@@ -158,7 +100,8 @@ class KafkaEventProcessor:
 @dag(
     'kafka_to_cassandra_pipeline',
     description='Pipeline to load click events from Kafka to Cassandra',
-    schedule=None,
+    schedule=timedelta(minutes=1),
+    is_paused_upon_creation=False,
     catchup=False,
     max_active_runs=1,
     tags=['clickstream', 'etl', 'cassandra', 'kafka'],
@@ -169,7 +112,7 @@ class KafkaEventProcessor:
         'email_on_failure': False,
         'email_on_retry': False,
         'retries': 3,
-        'retry_delay': timedelta(minutes=5),
+        'retry_delay': timedelta(seconds=30),
     }
 )
 def kafka_to_cassandra_pipeline():

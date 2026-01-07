@@ -1,26 +1,21 @@
 from datetime import datetime, timedelta
 from airflow.decorators import dag, task
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 import logging
 import json
 import uuid
-from cassandra.cluster import Cluster, Session
-from cassandra.policies import DCAwareRoundRobinPolicy
+from cassandra.cluster import Session
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
-from dataclasses import dataclass, field
 from enum import Enum
-import hashlib
+import sys, os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.data.data_classes import RawClickEvent, CleanClickEvent, InvalidEvent
+from src.repository.sessions import get_cassandra_session, CASSANDRA_CONFIG
 
 logger = logging.getLogger(__name__)
-
-CASSANDRA_CONFIG = {
-    'hosts': ['host.docker.internal'],
-    'port': 9042,
-    'source_keyspace': 'clickstream',
-    'target_keyspace': 'analytics',
-    'local_datacenter': 'DC1'
-}
 
 CLEAN_EVENTS_TTL = 86400 * 365  # 1 год
 INVALID_EVENTS_TTL = 86400 * 7  # 7 дней
@@ -30,92 +25,6 @@ class ValidationStatus(Enum):
     VALID = "VALID"
     INVALID = "INVALID"
     SUSPICIOUS = "SUSPICIOUS"
-
-
-@dataclass
-class RawClickEvent:
-    user_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    id: Optional[str] = None
-    type: Optional[str] = None
-    received_at: Optional[datetime] = None
-    session_id: Optional[str] = None
-    ip: Optional[str] = None
-    url: Optional[str] = None
-    referrer: Optional[str] = None
-    device_type: Optional[str] = None
-    user_agent: Optional[str] = None
-    event_title: Optional[str] = None
-    element_id: Optional[str] = None
-    x: Optional[int] = None
-    y: Optional[int] = None
-    element_text: Optional[str] = None
-    element_class: Optional[str] = None
-    page_title: Optional[str] = None
-    viewport_width: Optional[int] = None
-    viewport_height: Optional[int] = None
-    scroll_position: Optional[float] = None
-    timestamp_offset: Optional[int] = None
-    metadata: Dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class CleanClickEvent:
-    id: str
-    type: str
-    created_at: datetime
-    session_id: str
-    user_id: int
-    url: str
-    device_type: Optional[str]
-    element_id: Optional[str]
-    x: Optional[int]
-    y: Optional[int]
-    event_title: Optional[str]
-
-    def get_deduplication_hash(self) -> str:
-        key = f"{self.id}_{self.user_id}_{self.session_id}_{self.type}_{self.created_at}_{self.x or 0}_{self.y or 0}"
-        return hashlib.md5(key.encode()).hexdigest()
-
-
-@dataclass
-class InvalidEvent:
-    user_id: Optional[int]
-    id: Optional[str]
-    type: Optional[str]
-    session_id: Optional[str]
-    event_time: Optional[datetime]
-    processed_at: datetime
-    validation_error: str
-
-
-@dataclass
-class ProcessedEventKey:
-    user_id: int
-    session_id: str
-    created_at: datetime
-    id: str
-
-
-def get_cassandra_session() -> Tuple[Session, Cluster]:
-    try:
-        cluster = Cluster(
-            contact_points=CASSANDRA_CONFIG['hosts'],
-            port=CASSANDRA_CONFIG['port'],
-            load_balancing_policy=DCAwareRoundRobinPolicy(
-                local_dc=CASSANDRA_CONFIG['local_datacenter']
-            ),
-            protocol_version=4,
-            connect_timeout=30
-        )
-        session = cluster.connect()
-
-        logger.info(f"Successfully connected to Cassandra at {CASSANDRA_CONFIG['hosts']}")
-        return session, cluster
-
-    except Exception as e:
-        logger.error(f"Failed to connect to Cassandra: {e}")
-        raise
 
 
 class CassandraEventProcessor:
@@ -261,9 +170,10 @@ class CassandraEventProcessor:
 @dag(
     'cassandra_to_cassandra_etl',
     description='ETL pipeline from Cassandra to Cassandra (different keyspaces) with deletion',
-    schedule=None,
+    schedule=timedelta(minutes=10),
     start_date=datetime(2023, 1, 1),
     catchup=False,
+    is_paused_upon_creation=False,
     max_active_runs=1,
     tags=['cassandra', 'etl', 'clickstream', 'cleanup'],
     default_args={
@@ -288,7 +198,7 @@ def cassandra_to_cassandra_pipeline():
             data_interval_end = datetime.now()
 
             query = f"""
-                SELECT * FROM {CASSANDRA_CONFIG['source_keyspace']}.click_events 
+                SELECT * FROM {CASSANDRA_CONFIG['keyspace']}.click_events
                 WHERE created_at >= ? AND created_at < ?
                 ALLOW FILTERING
             """
@@ -496,7 +406,7 @@ def cassandra_to_cassandra_pipeline():
             processor = CassandraEventProcessor()
 
             insert_query = f"""
-                INSERT INTO {CASSANDRA_CONFIG['target_keyspace']}.clean_click_events (
+                INSERT INTO analytics.clean_click_events (
                     user_id, created_at, id, type, session_id,
                     url, device_type, event_title, element_id, x, y
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -593,7 +503,7 @@ def cassandra_to_cassandra_pipeline():
             processor = CassandraEventProcessor()
 
             insert_query = f"""
-                INSERT INTO {CASSANDRA_CONFIG['target_keyspace']}.invalid_events (
+                INSERT INTO analytics.invalid_events (
                     user_id, id, type, session_id, event_time, processed_at, validation_error
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 USING TTL {INVALID_EVENTS_TTL}
@@ -682,8 +592,8 @@ def cassandra_to_cassandra_pipeline():
             processor = CassandraEventProcessor()
 
             delete_query = f"""
-                DELETE FROM {CASSANDRA_CONFIG['source_keyspace']}.click_events 
-                WHERE user_id = ? AND session_id = ? AND created_at = ? AND id = ?
+                DELETE FROM {CASSANDRA_CONFIG['keyspace']}.click_events
+                WHERE user_id = ? AND created_at = ? AND id = ?
             """
 
             prepared_stmt = session.prepare(delete_query)
@@ -697,14 +607,12 @@ def cassandra_to_cassandra_pipeline():
             for key_data in processed_keys_data:
                 try:
                     user_id = key_data['user_id']
-                    session_id = key_data['session_id']
                     created_at = datetime.fromisoformat(key_data['created_at']) if key_data['created_at'] else None
                     event_id = key_data['id']
 
-                    if user_id is not None and session_id and created_at and event_id:
+                    if user_id is not None and created_at and event_id:
                         delete_params.append((
                             user_id,
-                            session_id,
                             created_at,
                             event_id
                         ))

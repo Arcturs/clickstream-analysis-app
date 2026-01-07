@@ -3,60 +3,20 @@ from airflow.decorators import dag, task
 import pandas as pd
 import numpy as np
 import logging
-from clickhouse_driver import Client
-from cassandra.cluster import Cluster
+import sys, os
 
-CASSANDRA_CONFIG = {
-    'hosts': ['host.docker.internal'],
-    'port': 9042,
-    'keyspace': 'analytics'
-}
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-CLICKHOUSE_CONFIG = {
-    'host': 'host.docker.internal',
-    'port': 9002,
-    'user': 'admin',
-    'password': 'admin',
-    'database': 'analytics'
-}
+from src.repository.sessions import get_cassandra_session, get_clickhouse_client
 
 logger = logging.getLogger(__name__)
-
-def get_cassandra_session():
-    try:
-        cluster = Cluster(
-            CASSANDRA_CONFIG['hosts'],
-            port=CASSANDRA_CONFIG['port']
-        )
-
-        session = cluster.connect(CASSANDRA_CONFIG['keyspace'])
-        logger.info("Successfully connected to Cassandra")
-        return session, cluster
-    except Exception as e:
-        logger.error(f"Failed to connect to Cassandra: {e}")
-        raise
-
-
-def get_clickhouse_client():
-    try:
-        client = Client(
-            host=CLICKHOUSE_CONFIG['host'],
-            port=CLICKHOUSE_CONFIG['port'],
-            user=CLICKHOUSE_CONFIG['user'],
-            password=CLICKHOUSE_CONFIG['password'],
-            database=CLICKHOUSE_CONFIG['database']
-        )
-        logger.info("Successfully connected to ClickHouse")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to connect to ClickHouse: {e}")
-        raise
 
 @dag(
     'clickstream_analytics_cassandra_to_clickhouse',
     description='ETL pipeline for clickstream analytics: Cassandra → ClickHouse',
     schedule='0 2 * * *',
     catchup=False,
+    is_paused_upon_creation=False,
     max_active_runs=1,
     tags=['clickstream', 'analytics', 'cassandra', 'clickhouse', 'etl']
 )

@@ -4,62 +4,14 @@ import logging
 import json
 import uuid
 from typing import List, Optional, Dict, Any
-from minio import Minio
-from cassandra.cluster import Cluster
-from cassandra.policies import RoundRobinPolicy
+import os, sys
 
-from data_classes import ClickEventPayload, ClickEvent
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-MINIO_CONFIG = {
-    'endpoint': 'host.docker.internal:9000',
-    'access_key': 'minioadmin',
-    'secret_key': 'minioadmin',
-    'bucket': 'click-analysis'
-}
-
-CASSANDRA_CONFIG = {
-    'hosts': ['host.docker.internal'],
-    'port': 9042,
-    'keyspace': 'clickstream',
-    'table': 'click_events',
-    'local_datacenter': 'DC1'
-}
+from src.data.data_classes import ClickEventPayload, ClickEvent
+from src.repository.sessions import get_minio_client, get_cassandra_session, MINIO_CONFIG, CASSANDRA_CONFIG
 
 logger = logging.getLogger(__name__)
-
-
-def get_minio_client():
-    try:
-        client = Minio(
-            MINIO_CONFIG['endpoint'],
-            access_key=MINIO_CONFIG['access_key'],
-            secret_key=MINIO_CONFIG['secret_key'],
-            secure=False
-        )
-        logger.info("Successfully created MinIO client")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to create MinIO client: {e}")
-        raise
-
-
-def get_cassandra_session():
-    try:
-        cluster = Cluster(
-            CASSANDRA_CONFIG['hosts'],
-            port=CASSANDRA_CONFIG['port'],
-            load_balancing_policy=RoundRobinPolicy(),
-            protocol_version=4
-        )
-        session = cluster.connect(CASSANDRA_CONFIG['keyspace'])
-
-        session.set_keyspace(CASSANDRA_CONFIG['keyspace'])
-
-        logger.info("Successfully connected to Cassandra")
-        return session, cluster
-    except Exception as e:
-        logger.error(f"Failed to connect to Cassandra: {e}")
-        raise
 
 
 class CSVParser:
@@ -249,7 +201,8 @@ class ClickEventTransformer:
 @dag(
     'minio_to_cassandra_pipeline',
     description='Pipeline to load data from MinIO to Cassandra',
-    schedule=None,
+    schedule=timedelta(hours=1),
+    is_paused_upon_creation=False,
     catchup=False,
     max_active_runs=1,
     tags=['clickstream', 'etl', 'cassandra', 'minio'],
