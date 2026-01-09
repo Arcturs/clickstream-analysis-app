@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'generator'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: [ 'host.docker.internal:8092' ]
+        labels:
+          application: 'generator'
+  - job_name: 'api'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: [ 'host.docker.internal:8091' ]
+        labels:
+          application: 'api'
+  - job_name: 'minio'
+    metrics_path: '/minio/v2/metrics/cluster'
+    scheme: http
+    scrape_interval: 5s
+    static_configs:
+      - targets: [ 'host.docker.internal:9000' ]
+        labels:
+          application: 'minio'
+  - job_name: 'clickhouse-master-node'
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    static_configs:
+      - targets: [ 'host.docker.internal:9363' ]
+        labels:
+          application: 'clickhouse-master-node'
+  - job_name: 'clickhouse-replica-node'
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    static_configs:
+      - targets: [ 'host.docker.internal:9364' ]
+        labels:
+          application: 'clickhouse-replica-node'

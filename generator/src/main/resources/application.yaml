@@ -1,0 +1,19 @@
+spring:
+  application.name: generator
+  kafka:
+    topic: app.messages
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVER:localhost:9092,localhost:9094}
+
+scheduler.batchSize: 500
+server:
+  port: 8080
+
+management:
+  server.port: 8091
+  endpoint:
+    health.access: read_only
+    info.access: read_only
+    metrics.access: unrestricted
+    prometheus.access: unrestricted
+    loggers.access: read_only
+  endpoints.web.exposure.include: health,info,prometheus,metrics,loggers
