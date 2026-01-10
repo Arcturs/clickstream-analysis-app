@@ -1,0 +1,10 @@
+apache-airflow
+pandas
+numpy
+clickhouse-driver
+cassandra-driver
+sqlalchemy
+requests
+minio
+kafka
+kafka-python-ng

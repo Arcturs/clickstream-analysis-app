@@ -1,0 +1,384 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    hostname: zookeeper
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_SERVERS: zookeeper:2888:3888
+    ports:
+      - "2181:2181"
+
+  kafka1:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka1
+    container_name: kafka1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1:9092,EXTERNAL://host.docker.internal:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+    depends_on:
+      - zookeeper
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka2
+    container_name: kafka2
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2:9092,EXTERNAL://host.docker.internal:9094
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+    depends_on:
+      - zookeeper
+
+  init-topic-1:
+    image: confluentinc/cp-kafka:7.6.1
+    command: >
+      bash -c "
+      echo 'Waiting for Kafka to be ready...';
+      cub kafka-ready -b kafka1:9092,kafka2:9094 1 60 &&
+      kafka-topics --create --if-not-exists --bootstrap-server kafka1:9092,kafka2:9094 --topic app.messages --partitions 4 --replication-factor 2 --config retention.ms=604800000
+      "
+    depends_on:
+      - kafka1
+      - kafka2
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    container_name: kafka-ui
+    ports:
+      - "7777:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: kafka-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:9092,kafka2:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    depends_on:
+      - kafka1
+      - kafka2
+      - init-topic-1
+
+  generator:
+    image: generator
+    container_name: generator
+    build:
+      context: generator/
+    ports:
+      - "8081:8080"
+      - "8092:8091"
+    depends_on:
+      - zookeeper
+      - kafka1
+      - kafka2
+    environment:
+      KAFKA_BOOTSTRAP_SERVER: host.docker.internal:9092,host.docker.internal:9094
+
+  cassandra-seed-dwh:
+    image: scylladb/scylla:2025.4
+    container_name: cassandra-seed-dwh
+    hostname: cassandra-seed-dwh
+    volumes:
+      - cassandra-seed-data-dwh:/var/lib/cassandra
+      - ./cassandra/scylla.yaml:/etc/scylla/scylla.yaml
+    ports:
+      - "9042:9042"
+    command: --smp 1 --dc DC1 --rack rack1 --seeds cassandra-seed-dwh
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  cassandra-node2-dwh:
+    image: scylladb/scylla:2025.4
+    container_name: cassandra-node2-dwh
+    hostname: cassandra-node2-dwh
+    depends_on:
+      cassandra-seed-dwh:
+        condition: service_healthy
+    command: --smp 1 --dc DC1 --rack rack2 --seeds cassandra-seed-dwh,cassandra-node2-dwh
+    volumes:
+      - cassandra-node2-data-dwh:/var/lib/cassandra
+      - ./cassandra/scylla.yaml:/etc/scylla/scylla.yaml
+
+  cassandra-init-dwh:
+    image: cassandra:4.1
+    container_name: cassandra-init-dwh
+    depends_on:
+      - cassandra-seed-dwh
+      - cassandra-node2-dwh
+    command: >
+      bash -c "
+        echo 'Waiting for cluster to stabilize...' &&
+        sleep 15 &&
+        echo 'Initializing keyspace and tables...' &&
+        cqlsh cassandra-seed-dwh -e \"
+          CREATE KEYSPACE IF NOT EXISTS clickstream
+              WITH REPLICATION = {
+                  'class': 'NetworkTopologyStrategy',
+                  'DC1': 2
+                  };
+
+          CREATE TABLE IF NOT EXISTS clickstream.click_events
+          (
+              user_id          INT,
+              created_at       TIMESTAMP,
+              id               TEXT,
+              type             TEXT,
+              received_at      TIMESTAMP,
+              session_id       TEXT,
+              ip               TEXT,
+              url              TEXT,
+              referrer         TEXT,
+              device_type      TEXT,
+              user_agent       TEXT,
+              event_title      TEXT,
+              element_id       TEXT,
+              x                INT,
+              y                INT,
+              element_text     TEXT,
+              element_class    TEXT,
+              page_title       TEXT,
+              viewport_width   INT,
+              viewport_height  INT,
+              scroll_position  DOUBLE,
+              timestamp_offset BIGINT,
+              metadata         MAP<TEXT, TEXT>,
+              PRIMARY KEY ((user_id), created_at, id)
+          ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
+
+          CREATE INDEX IF NOT EXISTS idx_click_events_session_id ON clickstream.click_events (session_id);
+          CREATE INDEX IF NOT EXISTS idx_click_events_type ON clickstream.click_events (type);
+          CREATE INDEX IF NOT EXISTS idx_click_events_event_title ON clickstream.click_events (event_title);
+          CREATE INDEX IF NOT EXISTS idx_click_events_device_type ON clickstream.click_events (device_type);
+          
+          CREATE KEYSPACE IF NOT EXISTS analytics
+              WITH REPLICATION = {
+                  'class': 'NetworkTopologyStrategy',
+                  'DC1': 2
+                  };
+
+          CREATE TABLE IF NOT EXISTS analytics.clean_click_events
+          (
+              user_id          INT,
+              created_at       TIMESTAMP,
+              id               TEXT,
+              type             TEXT,
+              session_id       TEXT,
+              url              TEXT,
+              device_type      TEXT,
+              event_title      TEXT,
+              element_id       TEXT,
+              x                INT,
+              y                INT,
+              PRIMARY KEY ((user_id), created_at, id)
+          ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
+
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_session_id ON analytics.clean_click_events (session_id);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_type ON analytics.clean_click_events (type);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_event_title ON analytics.clean_click_events (event_title);
+          CREATE INDEX IF NOT EXISTS idx_clean_click_events_device_type ON analytics.clean_click_events (device_type);
+
+          CREATE TABLE IF NOT EXISTS analytics.invalid_events
+          (
+              user_id          INT,
+              id               TEXT,
+              type             TEXT,
+              session_id       TEXT,
+              event_time       TIMESTAMP,
+              processed_at     TIMESTAMP,
+              validation_error TEXT,
+              PRIMARY KEY ((user_id), id)
+          ) WITH CLUSTERING ORDER BY (id ASC);
+        \"
+        echo 'Checking replication on second node...' &&
+        sleep 15 &&
+        cqlsh cassandra-node2-dwh -e \"
+          USE clickstream;
+          SELECT * FROM clickstream.click_events;
+          USE analytics;
+          SELECT * FROM analytics.clean_click_events;
+        \" &&
+        echo 'Cluster initialization completed successfully!'
+      "
+
+  api:
+    image: api
+    container_name: api
+    build:
+      context: api/
+    ports:
+      - "8080:8080"
+      - "8091:8091"
+    depends_on:
+      - cassandra-init-dwh
+    environment:
+      CASSANDRA_HOST: host.docker.internal
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001" # Web UI порт
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_DOMAIN: localhost
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    volumes:
+      - minio_data:/data
+
+  mc:
+    image: minio/mc:RELEASE.2025-07-21T05-28-08Z
+    container_name: mc
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb local/click-analysis --ignore-existing;
+      mc policy set public local/click-analysis;
+      mc anonymous set public local/click-analysis;
+      tail -f /dev/null
+      "
+    depends_on:
+      - minio
+
+  clickhouse-keeper:
+    image: clickhouse/clickhouse-keeper:25.8-alpine
+    container_name: clickhouse-keeper
+    volumes:
+      - ./clickhouse/configs/clickhouse-keeper/config.xml:/etc/clickhouse-keeper/keeper_config.xml
+    ports:
+      - "9181:9181"
+    networks:
+      - clickhouse-net
+
+  clickhouse-01:
+    image: clickhouse/clickhouse-server:25.8-alpine
+    container_name: clickhouse-01
+    hostname: clickhouse-01
+    ports:
+      - "8123:8123"  # HTTP
+      - "9002:9000"  # Native protocol
+      - "9363:9363"  # Metrics
+    volumes:
+      - ./clickhouse/configs/clickhouse-01/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./clickhouse/configs/clickhouse-01/users.xml:/etc/clickhouse-server/users.d/users.xml
+      - clickhouse-01-data:/var/lib/clickhouse
+      - ./clickhouse/logs/clickhouse-01:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: [ "CMD", "clickhouse-client", "--host", "localhost", "--user", "admin", "--password", "admin", "--query", "SELECT 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      - clickhouse-keeper
+    networks:
+      - clickhouse-net
+
+  clickhouse-02:
+    image: clickhouse/clickhouse-server:25.8-alpine
+    container_name: clickhouse-02
+    hostname: clickhouse-02
+    ports:
+      - "8124:8123"
+      - "9003:9000"
+      - "9364:9363"
+    volumes:
+      - ./clickhouse/configs/clickhouse-02/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./clickhouse/configs/clickhouse-02/users.xml:/etc/clickhouse-server/users.d/users.xml
+      - clickhouse-02-data:/var/lib/clickhouse
+      - ./clickhouse/logs/clickhouse-02:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: [ "CMD", "clickhouse-client", "--host", "localhost", "--user", "admin", "--password", "admin", "--query", "SELECT 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      - clickhouse-keeper
+    networks:
+      - clickhouse-net
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:25.8-alpine
+    container_name: clickhouse-init
+    depends_on:
+      clickhouse-01:
+        condition: service_healthy
+      clickhouse-02:
+        condition: service_healthy
+    volumes:
+      - ./init-scripts/clickhouse/init-tables.sh:/init-tables.sh
+    networks:
+      - clickhouse-net
+    command: ["sh", "/init-tables.sh"]
+
+  prometheus:
+    image: prom/prometheus:v3.2.0
+    container_name: prometheus
+    user: "$UID:$GID"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yaml'
+      - '--storage.tsdb.path=/'
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "3001:3001"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      GF_SERVER_HTTP_PORT: 3001
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_SERVER_DOMAIN: localhost
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+    depends_on:
+      - prometheus
+
+volumes:
+  cassandra-seed-data-dwh:
+  cassandra-node2-data-dwh:
+  minio_data:
+  clickhouse-01-data:
+  clickhouse-02-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  clickhouse-net:
+    driver: bridge
